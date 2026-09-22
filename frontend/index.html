@@ -5,62 +5,72 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI Wager V2</title>
 <style>
-body{font-family:Arial,sans-serif;background:#08111f;color:#eef4ff;margin:0}
-main{max-width:1240px;margin:auto;padding:24px 18px 60px}
+body{font-family:Arial,sans-serif;background:#fff;color:#172033;margin:0}
+main{max-width:1240px;margin:auto;padding:92px 18px 60px}
 h1{margin:0 0 6px;font-size:clamp(25px,4vw,34px)}.muted,.note{color:#91a0b8}
-.app-nav{position:sticky;top:0;z-index:20;background:rgba(8,17,31,.94);backdrop-filter:blur(12px);border-bottom:1px solid #1d2d43;padding:10px 0;margin-bottom:18px}
+.app-nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid #e5e9f0;padding:10px 0;box-shadow:0 5px 22px rgba(20,32,52,.08)}
 .nav-inner{max-width:1240px;margin:auto;display:flex;gap:8px;align-items:center;justify-content:space-between;padding:0 18px}
-.nav-tabs{display:flex;gap:8px;flex-wrap:wrap}.nav-tab{background:#15243a;color:#cbd8ea;border:1px solid #243750}.nav-tab.active{background:#2563eb;color:#fff}
+.nav-tabs{display:flex;gap:8px;flex-wrap:wrap}.nav-tab{background:#f3f6fa;color:#344054;border:1px solid #dce3ec;min-width:42px;width:42px;height:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:19px}.nav-tab.active{background:#2563eb;color:#fff;border-color:#2563eb}
+.nav-icon{width:20px;height:20px;display:block}
+
 .hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;flex-wrap:wrap}
 .logo-pair{display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:10px}
 .team-logo{width:52px;height:52px;object-fit:contain;border-radius:50%;background:#f7f9fc;padding:5px;box-shadow:0 6px 18px rgba(0,0,0,.22)}
 .team-logo.missing{opacity:.35}.favorite-btn{min-width:48px;padding:9px 11px;background:#172d49;border:1px solid #2b4666;font-size:20px}.favorite-btn.selected{background:#173f37;border-color:#2c8a69}
 .view{display:none}.view.active{display:block}
-.selected-hero{background:linear-gradient(135deg,#0f2137,#101c2d);border:1px solid #2a4260;border-radius:18px;padding:20px;margin-bottom:18px}
-.selected-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.selected-stat{background:#17263b;border-radius:12px;padding:12px}.selected-stat b{font-size:22px;display:block}
+.selected-hero{background:linear-gradient(135deg,#f7f9fc,#eef4fb);border:1px solid #dfe6ef;border-radius:18px;padding:20px;margin-bottom:18px}
+.selected-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.selected-stat{background:#fff;border:1px solid #e1e7ef;border-radius:12px;padding:12px}.selected-stat b{font-size:22px;display:block}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.filters button{padding:8px 12px}.filters button.active{background:#2563eb}
 .toolbar,.searchbox,.links{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
-input,select{background:#101c2d;color:#eef4ff;border:1px solid #22334d;border-radius:10px;padding:11px 12px;min-width:220px}
+input,select{background:#fff;color:#172033;border:1px solid #d7dee8;border-radius:10px;padding:11px 12px;min-width:220px}
 button{background:#2563eb;color:#fff;border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer}
-button.secondary,.close{background:#24334a}
-.status,.card,.toolbox,.questions{background:#101c2d;border:1px solid #22334d;border-radius:14px}
+button.secondary,.close{background:#eef2f7;color:#344054;border:1px solid #d9e0e9}
+.icon-btn{width:42px;height:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:19px}
+.search-shell{display:flex;align-items:center;gap:8px}
+.search-toggle{flex:0 0 42px}
+.searchbox{margin:0;max-height:0;opacity:0;overflow:hidden;transform:translateX(12px);transition:max-height .32s ease,opacity .25s ease,transform .32s ease}
+.searchbox.open{max-height:90px;opacity:1;transform:translateX(0);margin:12px 0 16px}
+.searchbox input{flex:1;min-width:0;width:min(420px,calc(100vw - 90px))}
+.searchbox select{min-width:190px}
+
+.status,.card,.toolbox,.questions{background:#fff;border:1px solid #e1e7ef;border-radius:14px;box-shadow:0 4px 18px rgba(30,45,65,.05)}
 .status{padding:12px 15px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:15px;margin-top:18px}
 .card{padding:18px}.teams{font-size:19px;font-weight:800;line-height:1.35}.league{font-size:13px;color:#91a0b8;margin-bottom:12px}
 .match-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.team-visual{display:flex;align-items:center;gap:9px}.team-visual img{width:34px;height:34px;object-fit:contain;border-radius:50%;background:#f7f9fc;padding:3px}.team-names{text-align:center}
 .probs,.values{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:15px 0}
-.prob,.value{background:#17263b;border-radius:10px;padding:10px;text-align:center}.prob b,.value b{display:block;font-size:20px}
-.bar{height:7px;background:#23344e;border-radius:99px;overflow:hidden;margin-top:7px}.bar span{display:block;height:100%;background:#3b82f6}
+.prob,.value{background:#f4f7fa;border-radius:10px;padding:10px;text-align:center}.prob b,.value b{display:block;font-size:20px}
+.bar{height:7px;background:#e1e7ef;border-radius:99px;overflow:hidden;margin-top:7px}.bar span{display:block;height:100%;background:#3b82f6}
 .meta{font-size:13px;color:#aebbd0;line-height:1.7}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#17355b;color:#8fc0ff;font-size:12px;font-weight:700}
-.good{border:1px solid #23845b!important}.good b{color:#66e3a8}.signal{padding:9px;border-radius:9px;margin:10px 0;background:#15283d}
-.links a{color:#9cc9ff;background:#172d49;padding:7px 9px;border-radius:8px;text-decoration:none;font-size:12px}
-.error{color:#ff9a9a}.empty{padding:28px;text-align:center;color:#91a0b8}
+.good{border:1px solid #23845b!important}.good b{color:#66e3a8}.signal{padding:9px;border-radius:9px;margin:10px 0;background:#f3f6fa}
+.links a{color:#1859b8;background:#edf4ff;padding:7px 9px;border-radius:8px;text-decoration:none;font-size:12px}
+.error{color:#ff9a9a}.empty{padding:28px;text-align:center;color:#667085}
 .modal{display:none;position:fixed;inset:0;background:rgba(2,8,18,.78);z-index:50;padding:18px;overflow:auto}
-.modal.open{display:flex;align-items:flex-start;justify-content:center}.modal-panel{width:min(1080px,100%);margin:20px auto;background:#0d192a;border:1px solid #29405e;border-radius:18px;padding:20px;box-shadow:0 20px 70px rgba(0,0,0,.45)}
-.modal-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.chart-wrap{background:#0a1524;border:1px solid #20334c;border-radius:14px;padding:12px;margin:14px 0}
+.modal.open{display:flex;align-items:flex-start;justify-content:center}.modal-panel{width:min(1080px,100%);margin:20px auto;background:#fff;border:1px solid #dfe6ef;border-radius:18px;padding:20px;box-shadow:0 20px 70px rgba(20,32,52,.2)}
+.modal-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.chart-wrap{background:#f7f9fc;border:1px solid #e1e7ef;border-radius:14px;padding:12px;margin:14px 0}
 .legend{display:flex;gap:16px;flex-wrap:wrap;color:#aebbd0;font-size:12px}.performance{width:100%;height:250px;display:block}
-.analysis-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.toolbox,.questions{padding:14px}.ifthen{border-left:3px solid #3b82f6;padding:10px 12px;margin:8px 0;background:#142238;border-radius:8px}
+.analysis-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.toolbox,.questions{padding:14px}.ifthen{border-left:3px solid #3b82f6;padding:10px 12px;margin:8px 0;background:#f3f7fc;border-radius:8px}
 .modal-note{color:#aebbd0;font-size:12px;line-height:1.6}
 @media(max-width:760px){.analysis-grid{grid-template-columns:1fr}.modal{padding:8px}.modal-panel{padding:14px}.performance{height:210px}}
 </style>
 </head>
 <body>
-<div class="app-nav"><div class="nav-inner"><div style="font-weight:900">⚽ AI Wager V2</div><div class="nav-tabs"><button class="nav-tab active" id="homeTab">All Matches</button><button class="nav-tab" id="selectedTab">⭐ My Selected Matches <span id="selectedCount">0</span></button></div></div></div>
+<div class="app-nav"><div class="nav-inner"><div style="font-weight:900">⚽ AI Wager V2</div><div class="nav-tabs"><button class="nav-tab active" id="homeTab" title="All matches" aria-label="All matches"><span class="nav-icon">⌂</span></button><button class="nav-tab" id="selectedTab" title="Selected matches" aria-label="Selected matches"><span class="nav-icon">★</span><span id="selectedCount" style="font-size:10px;margin-left:-2px"></span></button><button class="nav-tab" id="navSearchBtn" title="Search" aria-label="Search"><span class="nav-icon">⌕</span></button></div></div></div>
 <main>
 <div id="homeView" class="view active">
 <div class="hero"><div><h1>Football intelligence dashboard</h1><div class="muted">Fixtures · form · probabilities · odds · evidence</div></div></div>
 <div class="toolbar">
-<button id="scanBtn">🔎 Scan all available football</button>
-<button class="secondary" id="predBtn">Today's model cards</button>
-<button class="secondary" id="fixturesBtn">Fixtures only</button>
+<button class="icon-btn" id="scanBtn" title="Scan all available football" aria-label="Scan all available football">⟳</button>
+<button class="secondary icon-btn" id="predBtn" title="Today's model cards" aria-label="Today's model cards">◈</button>
+<button class="secondary icon-btn" id="fixturesBtn" title="Fixtures only" aria-label="Fixtures only">▦</button>
 </div>
-<div class="searchbox">
-<input id="search" placeholder="Search team, league or cup…">
-<select id="category">
+<div class="search-shell"><button class="secondary icon-btn search-toggle" id="searchToggle" title="Open search" aria-label="Open search">⌕</button><div class="searchbox" id="searchBox">
+<input id="search" placeholder="Search team, league or cup…" aria-label="Search team, league or cup">
+<select id="category" aria-label="Competition category">
 <option value="all">All competitions</option><option>League</option><option>Cup</option>
 <option>International/Tournament</option><option>Qualification</option><option>Friendly</option><option>Women's League</option>
 </select>
-<button id="searchBtn">Search matches</button>
-</div>
+<button class="icon-btn" id="searchBtn" title="Search" aria-label="Search">⌕</button>
+</div></div>
 <div id="status" class="status">Checking system…</div>
 <div id="homeSavedHint" class="note" style="margin:16px 0">⭐ Select only the matches you want to track. Your checklist lives on the separate <b>My Selected Matches</b> page.</div>
 
@@ -311,6 +321,8 @@ document.querySelectorAll("[data-filter]").forEach(function(b){b.addEventListene
 document.getElementById("scanBtn").addEventListener("click",loadScan);
 document.getElementById("predBtn").addEventListener("click",loadPredictions);
 document.getElementById("fixturesBtn").addEventListener("click",loadFixtures);
+document.getElementById("searchToggle").addEventListener("click",function(){var box=document.getElementById("searchBox");box.classList.toggle("open");if(box.classList.contains("open"))setTimeout(function(){document.getElementById("search").focus();},180);});
+document.getElementById("navSearchBtn").addEventListener("click",function(){showView("home");var box=document.getElementById("searchBox");if(!box.classList.contains("open"))box.classList.add("open");setTimeout(function(){document.getElementById("search").focus();},180);});
 document.getElementById("searchBtn").addEventListener("click",searchMatches);
 document.getElementById("search").addEventListener("keydown",function(e){if(e.key==="Enter")searchMatches();});
 document.getElementById("closeModal").addEventListener("click",closeMatchModal);
