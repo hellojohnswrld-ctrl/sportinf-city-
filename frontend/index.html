@@ -38,7 +38,7 @@ button.secondary,.close{background:#24334a}
 <div class="toolbar">
 <button id="scanBtn">🔎 Scan all available football</button>
 <button class="secondary" id="predBtn">Today's model cards</button>
-<button class="secondary" id="fixturesBtn">Fixtures only</button>
+<button class="secondary" id="fixturesBtn">Fixtures only</button><button class="secondary" id="selectedBtn">⭐ My Selected Matches</button>
 </div>
 <div class="searchbox">
 <input id="search" placeholder="Search team, league or cup…">
@@ -49,7 +49,7 @@ button.secondary,.close{background:#24334a}
 <button id="searchBtn">Search matches</button>
 </div>
 <div id="status" class="status">Checking system…</div>
-<section class="card" id="savedPanel" style="margin-top:18px;display:none">
+<section class="card" id="savedPanel" style="margin-top:18px;display:none"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><h2 style="margin:0">⭐ My Selected Matches</h2><div class="note">Only matches you choose are kept here for focused tracking.</div></div><button class="secondary" id="clearSelectedBtn">Clear all</button></div>
 <h2 style="margin-top:0">📌 Saved forecasts · after-match review</h2>
 <div class="note">Your selected forecast is stored in this browser so we can compare the original calculation with the final result later.</div>
 <div id="savedContent" style="margin-top:12px"></div>
@@ -114,6 +114,7 @@ function card(p){
 }
 function savedForecasts(){try{return JSON.parse(localStorage.getItem("aiWagerSavedForecasts")||"[]");}catch(e){return [];}}
 function setSavedForecasts(rows){localStorage.setItem("aiWagerSavedForecasts",JSON.stringify(rows));}
+function selectedIds(){return savedForecasts();}
 function saveCurrentForecast(d){
   var rows=savedForecasts(),id=String(d.event_id);
   rows=rows.filter(function(x){return String(x.event_id)!==id;});
@@ -167,7 +168,7 @@ async function openMatchAnalysis(id){
       '<div class="analysis-grid"><section class="toolbox"><h3 style="margin-top:0">Probability toolbox · IF / THEN</h3>'+q+'</section><section class="questions"><h3 style="margin-top:0">Questions before wagering</h3><ul>'+((d.questions_to_check||[]).map(function(x){return '<li style="margin:9px 0">'+esc(x)+'</li>';}).join(""))+'</ul><div class="modal-note">'+esc(d.disclaimer||"")+'</div></section></div>'+
       '<div style="margin:14px 0"><button id="saveForecastBtn">📌 Save this forecast for after-match review</button></div><div class="modal-note">The saved record keeps the original probabilities and match date for later comparison.</div>'+
       '<div class="analysis-grid" style="margin-top:14px"><section class="toolbox"><h3 style="margin-top:0">'+esc(d.home_team)+' recent results</h3>'+historyRows(d.history&&d.history.home)+'</section><section class="toolbox"><h3 style="margin-top:0">'+esc(d.away_team)+' recent results</h3>'+historyRows(d.history&&d.history.away)+'</section></div>';
-    var saveBtn=document.getElementById("saveForecastBtn"); if(saveBtn) saveBtn.addEventListener("click",function(){saveCurrentForecast(d);saveBtn.textContent="✓ Forecast saved";saveBtn.disabled=true;});
+    var saveBtn=document.getElementById("saveForecastBtn"); if(saveBtn) saveBtn.addEventListener("click",function(){saveCurrentForecast(d);saveBtn.textContent="✓ Selected for tracking";saveBtn.disabled=true;});
   }catch(e){body.innerHTML='<div class="empty error">'+esc(e.message||"Interactive match analysis unavailable.")+'</div>';}
 }
 function bindAnalysisButtons(){
@@ -207,6 +208,8 @@ async function loadFixtures(){
 document.getElementById("scanBtn").addEventListener("click",loadScan);
 document.getElementById("predBtn").addEventListener("click",loadPredictions);
 document.getElementById("fixturesBtn").addEventListener("click",loadFixtures);
+document.getElementById("selectedBtn").addEventListener("click",function(){document.getElementById("savedPanel").scrollIntoView({behavior:"smooth"});renderSavedForecasts();});
+document.getElementById("clearSelectedBtn").addEventListener("click",function(){if(confirm("Remove all selected matches?")){setSavedForecasts([]);renderSavedForecasts();}});
 document.getElementById("searchBtn").addEventListener("click",searchMatches);
 document.getElementById("search").addEventListener("keydown",function(e){if(e.key==="Enter")searchMatches();});
 document.getElementById("closeModal").addEventListener("click",closeMatchModal);
