@@ -3,15 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Wager V2</title>
+<title>JOHN FORCAST</title>
 <style>
-body{font-family:Arial,sans-serif;background:#fff;color:#172033;margin:0}
+body{font-family:Arial,sans-serif;background:#fbfdfb;color:#172033;margin:0}
+body:before{content:"";position:fixed;inset:0;z-index:-2;opacity:.065;background:
+linear-gradient(90deg,transparent 49.7%,#16803c 49.7%,#16803c 50.3%,transparent 50.3%),
+linear-gradient(0deg,transparent 49.7%,#16803c 49.7%,#16803c 50.3%,transparent 50.3%),
+linear-gradient(90deg,transparent 8%,#16803c 8%,#16803c 8.35%,transparent 8.35%,transparent 92%,#16803c 92%,#16803c 92.35%,transparent 92.35%),
+linear-gradient(0deg,transparent 8%,#16803c 8%,#16803c 8.35%,transparent 8.35%,transparent 92%,#16803c 92%,#16803c 92.35%,transparent 92.35%);
+background-size:100% 100%;background-color:#eaf7ed}
+body:after{content:"";position:fixed;inset:0;z-index:-1;background:rgba(255,255,255,.9);pointer-events:none}
 main{max-width:1240px;margin:auto;padding:92px 18px 60px}
 h1{margin:0 0 6px;font-size:clamp(25px,4vw,34px)}.muted,.note{color:#91a0b8}
 .app-nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid #e5e9f0;padding:10px 0;box-shadow:0 5px 22px rgba(20,32,52,.08)}
 .nav-inner{max-width:1240px;margin:auto;display:flex;gap:8px;align-items:center;justify-content:space-between;padding:0 18px}
 .nav-tabs{display:flex;gap:8px;flex-wrap:wrap}.nav-tab{background:#f3f6fa;color:#344054;border:1px solid #dce3ec;min-width:42px;width:42px;height:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:19px}.nav-tab.active{background:#2563eb;color:#fff;border-color:#2563eb}
 .nav-icon{width:20px;height:20px;display:block}
+.brand-name{font-size:18px;letter-spacing:.4px}
+.access-gate{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(247,251,248,.94);backdrop-filter:blur(12px)}
+.access-card{width:min(470px,100%);background:rgba(255,255,255,.97);border:1px solid #dfe9e2;border-radius:28px;padding:34px;box-shadow:0 25px 80px rgba(30,70,45,.16);text-align:center}
+.access-ball{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;margin:0 auto 18px;background:linear-gradient(135deg,#16803c,#43b56a);color:white;font-size:34px;box-shadow:0 12px 28px rgba(22,128,60,.22)}
+.access-card h1{font-size:30px;margin:0 0 8px}.access-card p{color:#667085;line-height:1.6;margin:0 0 22px}
+.key-grid{display:flex;justify-content:center;gap:9px;margin:18px 0}
+.key-input{width:52px;height:60px;border:1px solid #d5dfd8;border-radius:13px;text-align:center;font-size:25px;font-weight:800;color:#172033;background:#fbfdfb;outline:none;transition:.2s}
+.key-input:focus{border-color:#16803c;box-shadow:0 0 0 4px rgba(22,128,60,.11);transform:translateY(-2px)}
+.access-submit{width:100%;background:#16803c;padding:13px 18px;font-size:15px}.access-submit:hover{background:#106a31}
+.access-error{min-height:20px;color:#c43d3d;font-size:13px;margin:8px 0}
+.access-foot{font-size:12px;color:#98a29b;margin-top:18px}
+.app-hidden{display:none!important}
 
 .hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;flex-wrap:wrap}
 .logo-pair{display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:10px}
@@ -54,7 +73,26 @@ button.secondary,.close{background:#eef2f7;color:#344054;border:1px solid #d9e0e
 </style>
 </head>
 <body>
-<div class="app-nav"><div class="nav-inner"><div style="font-weight:900">⚽ AI Wager V2</div><div class="nav-tabs"><button class="nav-tab active" id="homeTab" title="All matches" aria-label="All matches"><span class="nav-icon">⌂</span></button><button class="nav-tab" id="selectedTab" title="Selected matches" aria-label="Selected matches"><span class="nav-icon">★</span><span id="selectedCount" style="font-size:10px;margin-left:-2px"></span></button><button class="nav-tab" id="navSearchBtn" title="Search" aria-label="Search"><span class="nav-icon">⌕</span></button></div></div></div>
+<div id="accessGate" class="access-gate">
+  <div class="access-card">
+    <div class="access-ball">⚽</div>
+    <h1>JOHN FORCAST</h1>
+    <p>Insert the access keys from <b>John</b> to enter the forecasts and football intelligence pages.</p>
+    <div class="key-grid" id="keyGrid" aria-label="Access key">
+      <input class="key-input" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+      <input class="key-input" maxlength="1" inputmode="numeric">
+      <input class="key-input" maxlength="1" inputmode="numeric">
+      <input class="key-input" maxlength="1" inputmode="numeric">
+      <input class="key-input" maxlength="1" inputmode="numeric">
+      <input class="key-input" maxlength="1" inputmode="numeric">
+    </div>
+    <div id="accessError" class="access-error"></div>
+    <button id="accessSubmit" class="access-submit">Enter JOHN FORCAST</button>
+    <div class="access-foot">Private access · Ask John for your key.</div>
+  </div>
+</div>
+<div id="appShell" class="app-hidden">
+<div class="app-nav"><div class="nav-inner"><div class="brand-name" style="font-weight:900">⚽ JOHN FORCAST</div><div class="nav-tabs"><button class="nav-tab active" id="homeTab" title="All matches" aria-label="All matches"><span class="nav-icon">⌂</span></button><button class="nav-tab" id="selectedTab" title="Selected matches" aria-label="Selected matches"><span class="nav-icon">★</span><span id="selectedCount" style="font-size:10px;margin-left:-2px"></span></button><button class="nav-tab" id="navSearchBtn" title="Search" aria-label="Search"><span class="nav-icon">⌕</span></button></div></div></div>
 <main>
 <div id="homeView" class="view active">
 <div class="hero"><div><h1>Football intelligence dashboard</h1><div class="muted">Fixtures · form · probabilities · odds · evidence</div></div></div>
@@ -92,6 +130,7 @@ button.secondary,.close{background:#eef2f7;color:#344054;border:1px solid #d9e0e
 </div>
 </div>
 </main>
+</div>
 <script>
 (function(){
 "use strict";
@@ -327,7 +366,41 @@ document.getElementById("searchBtn").addEventListener("click",searchMatches);
 document.getElementById("search").addEventListener("keydown",function(e){if(e.key==="Enter")searchMatches();});
 document.getElementById("closeModal").addEventListener("click",closeMatchModal);
 document.getElementById("matchModal").addEventListener("click",function(e){if(e.target.id==="matchModal")closeMatchModal();});
-health();renderSavedForecasts();loadScan();
+async function bootAccess(){
+  var gate=document.getElementById("accessGate"),shell=document.getElementById("appShell"),inputs=Array.prototype.slice.call(document.querySelectorAll(".key-input")),err=document.getElementById("accessError"),submit=document.getElementById("accessSubmit");
+  function setOpen(){gate.style.display="none";shell.classList.remove("app-hidden");health();renderSavedForecasts();loadScan();startLiveTracking();}
+  try{var s=await fetch("/api/access/status").then(function(r){return r.json();});if(s.authenticated){setOpen();return;}}catch(e){}
+  inputs.forEach(function(inp,i){
+    inp.addEventListener("input",function(){
+      inp.value=inp.value.replace(/\D/g,"").slice(0,1);
+      if(inp.value&&inputs[i+1])inputs[i+1].focus();
+    });
+    inp.addEventListener("keydown",function(e){if(e.key==="Backspace"&&!inp.value&&inputs[i-1])inputs[i-1].focus();if(e.key==="Enter")submit.click();});
+    inp.addEventListener("paste",function(e){
+      e.preventDefault();
+      var v=(e.clipboardData||window.clipboardData).getData("text").replace(/\D/g,"").slice(0,inputs.length);
+      v.split("").forEach(function(ch,j){if(inputs[j])inputs[j].value=ch;});
+      if(v.length===inputs.length)inputs[inputs.length-1].focus();
+    });
+  });
+  submit.addEventListener("click",async function(){
+    var code=inputs.map(function(x){return x.value;}).join("");
+    err.textContent="";
+    if(code.length!==inputs.length){err.textContent="Please fill every key box.";return;}
+    submit.disabled=true;submit.textContent="Checking…";
+    try{
+      var r=await fetch("/api/access",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code})});
+      var d=await r.json();
+      if(!r.ok){throw new Error(d.error||"Invalid access key");}
+      setOpen();
+    }catch(e){
+      err.textContent="That key is not valid. Ask John for access.";
+      inputs.forEach(function(x){x.value="";});inputs[0].focus();
+    }finally{submit.disabled=false;submit.textContent="Enter JOHN FORCAST";}
+  });
+  setTimeout(function(){inputs[0].focus();},150);
+}
+bootAccess();
 })();
 </script>
 </body>
