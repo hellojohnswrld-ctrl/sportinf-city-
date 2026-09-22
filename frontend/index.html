@@ -236,13 +236,23 @@ function saveCurrentForecast(d){
   showView("selected");
 }
 async function refreshSavedResult(id){
-  try{var d=await getJson("/api/match/"+encodeURIComponent(id)+"/result");if(!d.completed)return;
-    var rows=savedForecasts(),r=rows.find(function(x){return String(x.event_id)===String(id);});if(!r)return;
-    r.status="FINAL";r.final_score=d.home_score+"-"+d.away_score;r.actual_result=d.result;
+  var rows=savedForecasts(),r=rows.find(function(x){return String(x.event_id)===String(id);});
+  if(!r)return;
+  try{
+    var d=await getJson("/api/match/"+encodeURIComponent(id)+"/result");
+    if(!d.completed){
+      r.result_message=d.status||"The match has not finished yet.";
+      setSavedForecasts(rows);renderSavedForecasts();
+      return;
+    }
+    r.status="FINAL";r.final_score=d.home_score+"-"+d.away_score;r.actual_result=d.result;r.result_message="";
     var p=r.prediction||{},probs={HOME:Number(p.home_probability||0),DRAW:Number(p.draw_probability||0),AWAY:Number(p.away_probability||0)};
     var top=Object.keys(probs).reduce(function(a,b){return probs[b]>probs[a]?b:a;});r.forecast_correct=top===d.result;r.model_probability=probs[top];
     setSavedForecasts(rows);renderSavedForecasts();
-  }catch(e){}
+  }catch(e){
+    r.result_message=e.message||"Unable to load match result. Please try again.";
+    setSavedForecasts(rows);renderSavedForecasts();
+  }
 }
 var currentSelectedFilter="ALL";
 var liveTimer=null;
@@ -290,7 +300,7 @@ function renderSavedForecasts(){
   if(pt)pt.textContent=pending;if(ft)ft.textContent=finished;updateSelectedCount();
   if(!rows.length){c.innerHTML='<div class="empty card">No selected matches yet. Go to <b>All Matches</b> and tap ☆ on a match to add it to your checklist.</div>';return;}
   var shown=rows.filter(function(r){return currentSelectedFilter==="ALL"||(currentSelectedFilter==="LIVE"&&r.live)||(currentSelectedFilter==="PENDING"&&r.status!=="FINAL"&&!r.live)||(currentSelectedFilter==="FINAL"&&r.status==="FINAL");});
-  c.innerHTML=shown.map(function(r){var p=r.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),top=hp>=dp&&hp>=ap?"HOME":dp>=ap?"DRAW":"AWAY",label=top==="HOME"?r.home_team:top==="AWAY"?r.away_team:"Draw",status=r.status==="FINAL"?(r.forecast_correct?"✅ Forecast matched":"❌ Forecast did not match"):"⏳ Waiting for final result";
+  c.innerHTML=shown.map(function(r){var p=r.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),top=hp>=dp&&hp>=ap?"HOME":dp>=ap?"DRAW":"AWAY",label=top==="HOME"?r.home_team:top==="AWAY"?r.away_team:"Draw",status=r.status==="FINAL"?(r.forecast_correct?"✅ Forecast matched":"❌ Forecast did not match"):(r.result_message?"⚠️ "+r.result_message:"⏳ Waiting for final result");
     return '<article class="card"><div class="match-top"><div class="league">'+esc(r.competition||"Football")+' · '+esc(r.date||"")+'</div><button class="favorite-btn selected delete-btn" data-id="'+esc(r.event_id)+'" title="Remove from selected">★</button></div><div class="logo-pair">'+logo(r.home_logo,r.home_team)+logo(r.away_logo,r.away_team)+'</div><div class="teams team-names">'+esc(r.home_team)+'<br>vs<br>'+esc(r.away_team)+'</div><div class="probs"><div class="prob">HOME<b>'+hp+'%</b></div><div class="prob">DRAW<b>'+dp+'%</b></div><div class="prob">AWAY<b>'+ap+'%</b></div></div><div class="signal"><b>Original forecast: '+esc(label)+'</b><br>'+status+(r.live?' · LIVE SCORE <b>'+esc(r.live_home_score||0)+' - '+esc(r.live_away_score||0)+'</b>':(r.final_score?' · Final <b>'+esc(r.final_score)+'</b>':''))+'</div><div class="meta">Selected '+esc(new Date(r.saved_at).toLocaleString())+'<br>Original model probability: '+pct(r.model_probability||Math.max(p.home_probability||0,p.draw_probability||0,p.away_probability||0))+'%'+(r.final_score?' · Final score '+esc(r.final_score):'')+'</div><div class="toolbar"><button class="secondary review-btn" data-id="'+esc(r.event_id)+'">↻ Check result</button></div></article>';}).join("")||'<div class="empty card">No matches in this filter.</div>';
   c.querySelectorAll(".review-btn").forEach(function(b){b.addEventListener("click",function(){refreshSavedResult(b.getAttribute("data-id"));});});
   c.querySelectorAll(".delete-btn").forEach(function(b){b.addEventListener("click",function(){setSavedForecasts(savedForecasts().filter(function(x){return String(x.event_id)!==String(b.getAttribute("data-id"));}));renderSavedForecasts();});});
