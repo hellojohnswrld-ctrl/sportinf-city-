@@ -20,6 +20,7 @@ h1{margin:0 0 6px;font-size:clamp(25px,4vw,34px)}.muted,.note{color:#91a0b8}
 .nav-tabs{display:flex;gap:8px;flex-wrap:wrap}.nav-tab{background:#f3f6fa;color:#344054;border:1px solid #dce3ec;min-width:42px;width:42px;height:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:19px}.nav-tab.active{background:#2563eb;color:#fff;border-color:#2563eb}
 .nav-icon{width:20px;height:20px;display:block}
 .brand-name{font-size:18px;letter-spacing:.4px}
+.vip-hero{background:linear-gradient(135deg,#fff7d6,#fff,#eef7ff);border:1px solid #eadca8;border-radius:20px;padding:24px;margin-bottom:18px}.vip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.vip-card{background:#fff;border:1px solid #e7e1c8;border-radius:16px;padding:16px;box-shadow:0 6px 22px rgba(80,70,30,.07)}.vip-rank{font-size:12px;font-weight:900;color:#9a7610}.vip-prob{font-size:28px;font-weight:900;color:#17653a}.vip-pay{background:#fff;border:1px solid #e1e7ef;border-radius:16px;padding:18px;margin:18px 0}.vip-pay input{min-width:0;width:100%;box-sizing:border-box;margin-bottom:8px}.vip-locked{padding:28px;text-align:center;background:#fff;border:1px solid #e1e7ef;border-radius:16px}
 .access-gate{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(247,251,248,.94);backdrop-filter:blur(12px)}
 .access-card{width:min(470px,100%);background:rgba(255,255,255,.97);border:1px solid #dfe9e2;border-radius:28px;padding:34px;box-shadow:0 25px 80px rgba(30,70,45,.16);text-align:center}
 .access-ball{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;margin:0 auto 18px;background:linear-gradient(135deg,#16803c,#43b56a);color:white;font-size:34px;box-shadow:0 12px 28px rgba(22,128,60,.22)}
@@ -92,7 +93,7 @@ button.secondary,.close{background:#eef2f7;color:#344054;border:1px solid #d9e0e
   </div>
 </div>
 <div id="appShell" class="app-hidden">
-<div class="app-nav"><div class="nav-inner"><div class="brand-name" style="font-weight:900">⚽ JOHN FORCAST</div><div class="nav-tabs"><button class="nav-tab active" id="homeTab" title="All matches" aria-label="All matches"><span class="nav-icon">⌂</span></button><button class="nav-tab" id="selectedTab" title="Selected matches" aria-label="Selected matches"><span class="nav-icon">★</span><span id="selectedCount" style="font-size:10px;margin-left:-2px"></span></button><button class="nav-tab" id="navSearchBtn" title="Search" aria-label="Search"><span class="nav-icon">⌕</span></button></div></div></div>
+<div class="app-nav"><div class="nav-inner"><div class="brand-name" style="font-weight:900">⚽ JOHN FORCAST</div><div class="nav-tabs"><button class="nav-tab active" id="homeTab" title="All matches" aria-label="All matches"><span class="nav-icon">⌂</span></button><button class="nav-tab" id="selectedTab" title="Selected matches" aria-label="Selected matches"><span class="nav-icon">★</span><span id="selectedCount" style="font-size:10px;margin-left:-2px"></span></button><button class="nav-tab" id="vipTab" title="VIP forecasts" aria-label="VIP forecasts"><span class="nav-icon">♛</span></button><button class="nav-tab" id="navSearchBtn" title="Search" aria-label="Search"><span class="nav-icon">⌕</span></button></div></div></div>
 <main>
 <div id="homeView" class="view active">
 <div class="hero"><div><h1>Football intelligence dashboard</h1><div class="muted">Fixtures · form · probabilities · odds · evidence</div></div></div>
@@ -114,6 +115,13 @@ button.secondary,.close{background:#eef2f7;color:#344054;border:1px solid #d9e0e
 
 <div id="content" class="grid"></div>
 </div>
+<div id="vipView" class="view">
+<section class="vip-hero"><div class="hero"><div><h1>♛ JOHN FORCAST VIP</h1><div class="muted">Premium 15-match model shortlist · upcoming football · probability-led analysis</div></div></div>
+<div class="vip-pay"><b>VIP access</b><p class="note">Unlock the daily 15-match premium shortlist. This is model-based analysis, not a guarantee of results.</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><input id="vipEmail" type="email" placeholder="Your email"><input id="vipPhone" inputmode="tel" placeholder="Your T-Money / Flooz number"></div>
+<div class="toolbar"><button id="vipPayBtn">💳 Unlock VIP</button><span id="vipPayStatus" class="note"></span></div></div>
+<div id="vipContent" class="vip-grid"><div class="vip-locked">🔒 VIP matches will appear here after payment confirmation.</div></div>
+</section></div>
 <div id="selectedView" class="view">
 <section class="selected-hero">
 <div class="hero"><div><h1>⭐ My Selected Matches</h1><div class="muted">Your personal checklist — only matches you deliberately add.</div></div><button class="secondary" id="backHomeBtn">← Back to matches</button></div>
@@ -312,6 +320,11 @@ function bindAnalysisButtons(){
     btn.addEventListener("click",function(ev){ev.stopPropagation();openMatchAnalysis(btn.getAttribute("data-match-id"));});
   });
 }
+async function loadVip(){
+  var c=document.getElementById("vipContent");c.innerHTML='<div class="empty">Building the premium 15-match shortlist…</div>';
+  try{var d=await getJson("/api/vip");c.innerHTML=d.matches&&d.matches.length?d.matches.map(function(x,i){var p=x.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),sp=pct(x.selection_probability);var label=x.selection==="HOME"?x.home_team:x.selection==="AWAY"?x.away_team:"Draw";return '<article class="vip-card"><div class="vip-rank">VIP PICK #'+(i+1)+' · '+esc(x.competition||"Football")+'</div><div class="logo-pair">'+logo(x.home_logo,x.home_team)+logo(x.away_logo,x.away_team)+'</div><div class="teams team-names">'+esc(x.home_team)+'<br>vs<br>'+esc(x.away_team)+'</div><div class="meta" style="margin:8px 0">'+esc(x.date||"")+' · '+esc((x.time||"").slice(0,5))+'</div><div class="vip-prob">'+sp+'% model probability</div><div class="signal"><b>Model outcome: '+esc(label)+'</b></div><div class="probs"><div class="prob">H<b>'+hp+'%</b></div><div class="prob">D<b>'+dp+'%</b></div><div class="prob">A<b>'+ap+'%</b></div></div></article>';}).join(""):'<div class="empty">No qualifying upcoming matches were available.</div>';
+  }catch(e){c.innerHTML='<div class="empty error">'+esc(e.message)+'</div>';}
+}
 async function health(){
   try{var d=await getJson("/health");setStatus(d.status==="ok"?"🟢 Online · TheSportsDB · Odds: "+(d.odds_configured?"connected":"not configured"):"🔴 Problem");}
   catch(e){setStatus('<span class="error">'+esc(e.message)+'</span>');}
@@ -342,18 +355,22 @@ async function loadFixtures(){
   catch(e){c.innerHTML='<div class="empty error">'+esc(e.message)+'</div>';}
 }
 function showView(name){
-  var home=name==="home",sv=document.getElementById("selectedView");
+  var home=name==="home",vip=name==="vip",sv=document.getElementById("selectedView"),vv=document.getElementById("vipView");
   document.getElementById("homeView").classList.toggle("active",home);
-  sv.classList.toggle("active",!home);
+  sv.classList.toggle("active",!home&&!vip);
+  vv.classList.toggle("active",vip);
   document.getElementById("homeTab").classList.toggle("active",home);
-  document.getElementById("selectedTab").classList.toggle("active",!home);
-  if(!home)renderSavedForecasts();
+  document.getElementById("selectedTab").classList.toggle("active",!home&&!vip);
+  document.getElementById("vipTab").classList.toggle("active",vip);
+  if(!home&&!vip)renderSavedForecasts();
+  if(vip)loadVip();
   if(home)window.scrollTo({top:0,behavior:"smooth"});
   else window.scrollTo({top:0,behavior:"smooth"});
   if(location.hash!=="#"+(home?"home":"selected"))history.replaceState(null,"","#"+(home?"home":"selected"));
 }
 document.getElementById("homeTab").addEventListener("click",function(){showView("home");});
 document.getElementById("selectedTab").addEventListener("click",function(){showView("selected");});
+document.getElementById("vipTab").addEventListener("click",function(){showView("vip");});
 document.getElementById("backHomeBtn").addEventListener("click",function(){showView("home");});
 document.getElementById("clearSelectedBtn").addEventListener("click",function(){if(confirm("Remove all selected matches?")){setSavedForecasts([]);renderSavedForecasts();}});
 document.querySelectorAll("[data-filter]").forEach(function(b){b.addEventListener("click",function(){currentSelectedFilter=b.getAttribute("data-filter");document.querySelectorAll("[data-filter]").forEach(function(x){x.classList.toggle("active",x===b);});renderSavedForecasts();});});
@@ -362,6 +379,7 @@ document.getElementById("predBtn").addEventListener("click",loadPredictions);
 document.getElementById("fixturesBtn").addEventListener("click",loadFixtures);
 document.getElementById("searchToggle").addEventListener("click",function(){var box=document.getElementById("searchBox");box.classList.toggle("open");if(box.classList.contains("open"))setTimeout(function(){document.getElementById("search").focus();},180);});
 document.getElementById("navSearchBtn").addEventListener("click",function(){showView("home");var box=document.getElementById("searchBox");if(!box.classList.contains("open"))box.classList.add("open");setTimeout(function(){document.getElementById("search").focus();},180);});
+document.getElementById("vipPayBtn").addEventListener("click",async function(){var email=document.getElementById("vipEmail").value.trim(),phone=document.getElementById("vipPhone").value.trim(),st=document.getElementById("vipPayStatus"),btn=this;if(!email){st.textContent="Enter your email first.";return;}btn.disabled=true;st.textContent="Creating secure payment…";try{var r=await fetch("/api/vip/payment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email,phone:phone,provider:"mobile_money"})});var d=await r.json();if(!r.ok)throw new Error(d.error||"Payment setup failed");st.innerHTML='<a href="'+esc(d.payment_url)+'" target="_blank" rel="noopener">Continue payment →</a>';window.open(d.payment_url,"_blank");}catch(e){st.textContent=e.message;}finally{btn.disabled=false;}});
 document.getElementById("searchBtn").addEventListener("click",searchMatches);
 document.getElementById("search").addEventListener("keydown",function(e){if(e.key==="Enter")searchMatches();});
 document.getElementById("closeModal").addEventListener("click",closeMatchModal);
