@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi import Request
 import os,hmac,hashlib,base64,time,httpx,datetime
-from backend.config import APP_NAME,APP_VERSION,THESPORTSDB_KEY,ODDS_API_KEY,ODDS_API_REGION,ODDS_API_SPORT,ODDS_API_ALL_SOCCER,PAYDUNYA_MASTER_KEY,PAYDUNYA_PRIVATE_KEY,PAYDUNYA_TOKEN,VIP_PRICE_XOF,VIP_MERCHANT_NAME
+from backend.config import APP_NAME,APP_VERSION,THESPORTSDB_KEY,ODDS_API_KEY,ODDS_API_REGION,ODDS_API_SPORT,ODDS_API_ALL_SOCCER,PAYDUNYA_MASTER_KEY,PAYDUNYA_PRIVATE_KEY,PAYDUNYA_TOKEN,VIP_PRICE_XOF,VIP_MERCHANT_NAME,PAYDUNYA_ENV,PAYDUNYA_CALLBACK_URL,VIP_ACCESS_TTL
 from backend.data_engine import football
 from backend.data_engine.odds import fetch_odds,fetch_all_soccer_odds,match_odds,value_layer,analysis_layer
 from backend.prediction_engine.football_model import baseline
@@ -330,7 +330,7 @@ async def vip_payment_status(request:Request, token:str=""):
 async def vip_payment_callback(request:Request):
     """PayDunya IPN endpoint. It confirms the token server-side before recording success."""
     try:
-        form=await request.form()
+        raw=await request.body()\n        from urllib.parse import parse_qs\n        form={k:v[0] for k,v in parse_qs(raw.decode("utf-8")).items()}
         token=str(form.get("token") or "").strip()
         status=str(form.get("status") or "").lower()
         received_hash=str(form.get("hash") or "").strip()
