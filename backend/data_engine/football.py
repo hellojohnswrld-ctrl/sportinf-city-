@@ -64,6 +64,10 @@ async def espn_fixtures(date=None):
             "strLeague":league,
             "strVenue":((comp.get("venue") or {}).get("fullName") or ""),
             "strStatus":((comp.get("status") or {}).get("type") or {}).get("description"),
+            "strCompetitionId":comp.get("id"),
+            "strLeagueId":((comp.get("league") or {}).get("id") or ""),
+            "strSeason":(season.get("displayName") or season.get("year") or ""),
+            "strWeek":((ev.get("week") or {}).get("number") if isinstance(ev.get("week"),dict) else ev.get("week")),
             "strSport":"Soccer",
             "source":"ESPN",
             "source_team_ids":{
@@ -81,6 +85,14 @@ async def espn_fixtures(date=None):
 
 def _key(v):
     return "".join(ch.lower() for ch in (v or "") if ch.isalnum())
+
+
+async def espn_event_details(event_id):
+    eid=str(event_id).replace("espn-", "")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r=await c.get(f"{ESPN_BASE}/all/summary",params={"event":eid})
+        r.raise_for_status()
+        return r.json()
 
 
 async def espn_recent_results(date=None, days=45):
