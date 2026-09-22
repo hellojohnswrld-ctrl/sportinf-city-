@@ -24,8 +24,8 @@ h1{margin:0 0 6px;font-size:clamp(25px,4vw,34px)}.muted,.note{color:#91a0b8}
 .access-card{width:min(470px,100%);background:rgba(255,255,255,.97);border:1px solid #dfe9e2;border-radius:28px;padding:34px;box-shadow:0 25px 80px rgba(30,70,45,.16);text-align:center}
 .access-ball{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;margin:0 auto 18px;background:linear-gradient(135deg,#16803c,#43b56a);color:white;font-size:34px;box-shadow:0 12px 28px rgba(22,128,60,.22)}
 .access-card h1{font-size:30px;margin:0 0 8px}.access-card p{color:#667085;line-height:1.6;margin:0 0 22px}
-.key-grid{display:flex;justify-content:center;gap:9px;margin:18px 0}
-.key-input{width:52px;height:60px;border:1px solid #d5dfd8;border-radius:13px;text-align:center;font-size:25px;font-weight:800;color:#172033;background:#fbfdfb;outline:none;transition:.2s}
+.key-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;width:100%;max-width:390px;margin:18px auto}
+.key-input{width:100%;min-width:0;height:60px;box-sizing:border-box;border:1px solid #d5dfd8;border-radius:13px;text-align:center;font-size:25px;font-weight:800;color:#172033;background:#fbfdfb;outline:none;transition:.2s;padding:0}
 .key-input:focus{border-color:#16803c;box-shadow:0 0 0 4px rgba(22,128,60,.11);transform:translateY(-2px)}
 .access-submit{width:100%;background:#16803c;padding:13px 18px;font-size:15px}.access-submit:hover{background:#106a31}
 .access-error{min-height:20px;color:#c43d3d;font-size:13px;margin:8px 0}
@@ -69,7 +69,7 @@ button.secondary,.close{background:#eef2f7;color:#344054;border:1px solid #d9e0e
 .legend{display:flex;gap:16px;flex-wrap:wrap;color:#aebbd0;font-size:12px}.performance{width:100%;height:250px;display:block}
 .analysis-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.toolbox,.questions{padding:14px}.ifthen{border-left:3px solid #3b82f6;padding:10px 12px;margin:8px 0;background:#f3f7fc;border-radius:8px}
 .modal-note{color:#aebbd0;font-size:12px;line-height:1.6}
-@media(max-width:760px){.analysis-grid{grid-template-columns:1fr}.modal{padding:8px}.modal-panel{padding:14px}.performance{height:210px}}
+@media(max-width:760px){.analysis-grid{grid-template-columns:1fr}.modal{padding:8px}.modal-panel{padding:14px}.performance{height:210px}.access-gate{padding:16px}.access-card{padding:26px 18px;border-radius:22px}.access-card h1{font-size:26px}.access-card p{font-size:14px}.key-grid{gap:7px;max-width:100%;margin:16px auto}.key-input{height:56px;font-size:23px;border-radius:11px}}\n@media(max-width:380px){.access-card{padding:22px 14px}.key-grid{gap:5px}.key-input{height:50px;font-size:21px;border-radius:9px}.access-submit{padding:12px 10px}}
 </style>
 </head>
 <body>
