@@ -174,6 +174,29 @@ async function refreshSavedResult(id){
   }catch(e){}
 }
 var currentSelectedFilter="ALL";
+var liveTimer=null;
+async function refreshSelectedLive(){
+  var rows=savedForecasts(); if(!rows.length)return;
+  try{
+    var d=await fetch("/api/live").then(function(r){return r.json();});
+    var live=d.events||[];
+    var changed=false;
+    rows=rows.map(function(r){
+      var hit=live.find(function(e){
+        var a=(e.home_team||e.strHomeTeam||"").toLowerCase(),b=(e.away_team||e.strAwayTeam||"").toLowerCase();
+        return a===String(r.home_team||"").toLowerCase() && b===String(r.away_team||"").toLowerCase();
+      });
+      if(hit){
+        r.live=true;r.live_minute=hit.minute||hit.status||"";r.live_home_score=hit.home_score!=null?hit.home_score:hit.intHomeScore;r.live_away_score=hit.away_score!=null?hit.away_score:hit.intAwayScore;changed=true;
+      }
+      return r;
+    });
+    if(changed)setSavedForecasts(rows);
+    renderSavedForecasts();
+  }catch(e){}
+}
+function startLiveTracking(){clearInterval(liveTimer);refreshSelectedLive();liveTimer=setInterval(refreshSelectedLive,30000);}
+
 function renderSavedForecasts(){
   var c=document.getElementById("savedContent"),rows=savedForecasts();
   var pending=rows.filter(function(x){return x.status!=="FINAL";}).length,finished=rows.filter(function(x){return x.status==="FINAL";}).length;
@@ -182,7 +205,7 @@ function renderSavedForecasts(){
   if(!rows.length){c.innerHTML='<div class="empty card">No selected matches yet. Go to <b>All Matches</b> and tap ☆ on a match to add it to your checklist.</div>';return;}
   var shown=rows.filter(function(r){return currentSelectedFilter==="ALL"||r.status===currentSelectedFilter;});
   c.innerHTML=shown.map(function(r){var p=r.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),top=hp>=dp&&hp>=ap?"HOME":dp>=ap?"DRAW":"AWAY",label=top==="HOME"?r.home_team:top==="AWAY"?r.away_team:"Draw",status=r.status==="FINAL"?(r.forecast_correct?"✅ Forecast matched":"❌ Forecast did not match"):"⏳ Waiting for final result";
-    return '<article class="card"><div class="match-top"><div class="league">'+esc(r.competition||"Football")+' · '+esc(r.date||"")+'</div><button class="favorite-btn selected delete-btn" data-id="'+esc(r.event_id)+'" title="Remove from selected">★</button></div><div class="logo-pair">'+logo(r.home_logo,r.home_team)+logo(r.away_logo,r.away_team)+'</div><div class="teams team-names">'+esc(r.home_team)+'<br>vs<br>'+esc(r.away_team)+'</div><div class="probs"><div class="prob">HOME<b>'+hp+'%</b></div><div class="prob">DRAW<b>'+dp+'%</b></div><div class="prob">AWAY<b>'+ap+'%</b></div></div><div class="signal"><b>Original forecast: '+esc(label)+'</b><br>'+status+(r.final_score?' · Final <b>'+esc(r.final_score)+'</b>':'')+'</div><div class="meta">Selected '+esc(new Date(r.saved_at).toLocaleString())+'<br>Original model probability: '+pct(r.model_probability||Math.max(p.home_probability||0,p.draw_probability||0,p.away_probability||0))+'%'+(r.final_score?' · Final score '+esc(r.final_score):'')+'</div><div class="toolbar"><button class="secondary review-btn" data-id="'+esc(r.event_id)+'">↻ Check result</button></div></article>';}).join("")||'<div class="empty card">No matches in this filter.</div>';
+    return '<article class="card"><div class="match-top"><div class="league">'+esc(r.competition||"Football")+' · '+esc(r.date||"")+'</div><button class="favorite-btn selected delete-btn" data-id="'+esc(r.event_id)+'" title="Remove from selected">★</button></div><div class="logo-pair">'+logo(r.home_logo,r.home_team)+logo(r.away_logo,r.away_team)+'</div><div class="teams team-names">'+esc(r.home_team)+'<br>vs<br>'+esc(r.away_team)+'</div><div class="probs"><div class="prob">HOME<b>'+hp+'%</b></div><div class="prob">DRAW<b>'+dp+'%</b></div><div class="prob">AWAY<b>'+ap+'%</b></div></div><div class="signal"><b>Original forecast: '+esc(label)+'</b><br>'+status+(r.live?' · LIVE SCORE <b>'+esc(r.live_home_score||0)+' - '+esc(r.live_away_score||0)+'</b>':(r.final_score?' · Final <b>'+esc(r.final_score)+'</b>':''))+'</div><div class="meta">Selected '+esc(new Date(r.saved_at).toLocaleString())+'<br>Original model probability: '+pct(r.model_probability||Math.max(p.home_probability||0,p.draw_probability||0,p.away_probability||0))+'%'+(r.final_score?' · Final score '+esc(r.final_score):'')+'</div><div class="toolbar"><button class="secondary review-btn" data-id="'+esc(r.event_id)+'">↻ Check result</button></div></article>';}).join("")||'<div class="empty card">No matches in this filter.</div>';
   c.querySelectorAll(".review-btn").forEach(function(b){b.addEventListener("click",function(){refreshSavedResult(b.getAttribute("data-id"));});});
   c.querySelectorAll(".delete-btn").forEach(function(b){b.addEventListener("click",function(){setSavedForecasts(savedForecasts().filter(function(x){return String(x.event_id)!==String(b.getAttribute("data-id"));}));renderSavedForecasts();});});
 }
