@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from backend.config import APP_NAME, APP_VERSION, API_FOOTBALL_KEY
+from backend.config import APP_NAME, APP_VERSION, THESPORTSDB_KEY
 from backend.data_engine import football
 from backend.prediction_engine.football_model import baseline
 from backend.storage.prediction_store import log_prediction
@@ -24,7 +24,11 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "api_football_configured": bool(API_FOOTBALL_KEY)}
+    return {
+        "status": "ok",
+        "sports_data_provider": "TheSportsDB",
+        "thesportsdb_configured": bool(THESPORTSDB_KEY),
+    }
 
 
 @app.get("/api/health")
@@ -61,4 +65,5 @@ async def docs_info():
         "health": "/health",
         "live": "/api/live",
         "fixtures": "/api/fixtures/today",
+        "provider": "TheSportsDB",
     }
