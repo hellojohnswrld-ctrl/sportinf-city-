@@ -49,6 +49,11 @@ button.secondary,.close{background:#24334a}
 <button id="searchBtn">Search matches</button>
 </div>
 <div id="status" class="status">Checking system…</div>
+<section class="card" id="savedPanel" style="margin-top:18px;display:none">
+<h2 style="margin-top:0">📌 Saved forecasts · after-match review</h2>
+<div class="note">Your selected forecast is stored in this browser so we can compare the original calculation with the final result later.</div>
+<div id="savedContent" style="margin-top:12px"></div>
+</section>
 <div id="content" class="grid"></div>
 <div id="matchModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
 <div class="modal-panel">
@@ -107,6 +112,31 @@ function card(p){
     ' — '+esc(p.away_form&&p.away_form.avg_goals_for!=null?p.away_form.avg_goals_for:"—")+'/'+esc(p.away_form&&p.away_form.avg_goals_against!=null?p.away_form.avg_goals_against:"—")+
     '<br>Goal difference: '+esc(p.home_form&&p.home_form.avg_goal_difference!=null?p.home_form.avg_goal_difference:"—")+' — '+esc(p.away_form&&p.away_form.avg_goal_difference!=null?p.away_form.avg_goal_difference:"—")+'</div></article>';
 }
+function savedForecasts(){try{return JSON.parse(localStorage.getItem("aiWagerSavedForecasts")||"[]");}catch(e){return [];}}
+function setSavedForecasts(rows){localStorage.setItem("aiWagerSavedForecasts",JSON.stringify(rows));}
+function saveCurrentForecast(d){
+  var rows=savedForecasts(),id=String(d.event_id);
+  rows=rows.filter(function(x){return String(x.event_id)!==id;});
+  rows.unshift({event_id:id,home_team:d.home_team,away_team:d.away_team,competition:d.competition,date:d.date||"",saved_at:new Date().toISOString(),prediction:d.prediction,status:"PENDING"});
+  setSavedForecasts(rows);renderSavedForecasts();
+}
+async function refreshSavedResult(id){
+  try{var d=await getJson("/api/match/"+encodeURIComponent(id)+"/result");if(!d.completed)return;
+    var rows=savedForecasts(),r=rows.find(function(x){return String(x.event_id)===String(id);});if(!r)return;
+    r.status="FINAL";r.final_score=d.home_score+"-"+d.away_score;r.actual_result=d.result;
+    var p=r.prediction||{},probs={HOME:Number(p.home_probability||0),DRAW:Number(p.draw_probability||0),AWAY:Number(p.away_probability||0)};
+    var top=Object.keys(probs).reduce(function(a,b){return probs[b]>probs[a]?b:a;});r.forecast_correct=top===d.result;r.model_probability=probs[top];
+    setSavedForecasts(rows);renderSavedForecasts();
+  }catch(e){}
+}
+function renderSavedForecasts(){
+  var panel=document.getElementById("savedPanel"),c=document.getElementById("savedContent"),rows=savedForecasts();
+  if(!rows.length){panel.style.display="none";return;} panel.style.display="block";
+  c.innerHTML=rows.map(function(r){var p=r.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),top=hp>=dp&&hp>=ap?"HOME":dp>=ap?"DRAW":"AWAY",label=top==="HOME"?r.home_team:top==="AWAY"?r.away_team:"Draw",status=r.status==="FINAL"?(r.forecast_correct?"✅ Forecast matched":"❌ Forecast did not match"):"⏳ Waiting for final result";
+    return '<div class="signal"><b>'+esc(r.home_team)+' vs '+esc(r.away_team)+'</b><br><span class="meta">'+esc(r.date)+' · '+esc(r.competition||"Football")+'</span><br>Original forecast: <b>'+esc(label)+'</b> · H '+hp+'% / D '+dp+'% / A '+ap+'%'+(r.final_score?' · Final: <b>'+esc(r.final_score)+'</b>':'')+'<br>'+status+' <button class="secondary review-btn" data-id="'+esc(r.event_id)+'" style="padding:7px 10px;margin-left:8px">Check result</button> <button class="secondary delete-btn" data-id="'+esc(r.event_id)+'" style="padding:7px 10px">Remove</button></div>';}).join("");
+  c.querySelectorAll(".review-btn").forEach(function(b){b.addEventListener("click",function(){refreshSavedResult(b.getAttribute("data-id"));});});
+  c.querySelectorAll(".delete-btn").forEach(function(b){b.addEventListener("click",function(){setSavedForecasts(savedForecasts().filter(function(x){return String(x.event_id)!==String(b.getAttribute("data-id"));}));renderSavedForecasts();});});
+}
 function closeMatchModal(){document.getElementById("matchModal").classList.remove("open");document.body.style.overflow="";}
 function svgPerformance(history,stroke){
   var rows=history||[],w=760,h=230,pad=38;
@@ -135,7 +165,9 @@ async function openMatchAnalysis(id){
       '<div class="chart-wrap"><div class="chart-title"><b>Previous performance · points per match</b></div><div class="legend"><span>Home team</span><span>Away team</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><b>'+esc(d.home_team)+'</b>'+svgPerformance(d.history&&d.history.home,"#3b82f6")+'</div><div><b>'+esc(d.away_team)+'</b>'+svgPerformance(d.history&&d.history.away,"#f59e0b")+'</div></div><div class="modal-note">W=3, D=1, L=0. This is an evidence aid, not a guarantee.</div></div>'+
       '<div class="probs"><div class="prob">HOME<b>'+hp+'%</b><div class="bar"><span style="width:'+hp+'%"></span></div></div><div class="prob">DRAW<b>'+dp+'%</b><div class="bar"><span style="width:'+dp+'%"></span></div></div><div class="prob">AWAY<b>'+ap+'%</b><div class="bar"><span style="width:'+ap+'%"></span></div></div></div>'+
       '<div class="analysis-grid"><section class="toolbox"><h3 style="margin-top:0">Probability toolbox · IF / THEN</h3>'+q+'</section><section class="questions"><h3 style="margin-top:0">Questions before wagering</h3><ul>'+((d.questions_to_check||[]).map(function(x){return '<li style="margin:9px 0">'+esc(x)+'</li>';}).join(""))+'</ul><div class="modal-note">'+esc(d.disclaimer||"")+'</div></section></div>'+
+      '<div style="margin:14px 0"><button id="saveForecastBtn">📌 Save this forecast for after-match review</button></div><div class="modal-note">The saved record keeps the original probabilities and match date for later comparison.</div>'+
       '<div class="analysis-grid" style="margin-top:14px"><section class="toolbox"><h3 style="margin-top:0">'+esc(d.home_team)+' recent results</h3>'+historyRows(d.history&&d.history.home)+'</section><section class="toolbox"><h3 style="margin-top:0">'+esc(d.away_team)+' recent results</h3>'+historyRows(d.history&&d.history.away)+'</section></div>';
+    var saveBtn=document.getElementById("saveForecastBtn"); if(saveBtn) saveBtn.addEventListener("click",function(){saveCurrentForecast(d);saveBtn.textContent="✓ Forecast saved";saveBtn.disabled=true;});
   }catch(e){body.innerHTML='<div class="empty error">'+esc(e.message||"Interactive match analysis unavailable.")+'</div>';}
 }
 function bindAnalysisButtons(){
@@ -179,7 +211,7 @@ document.getElementById("searchBtn").addEventListener("click",searchMatches);
 document.getElementById("search").addEventListener("keydown",function(e){if(e.key==="Enter")searchMatches();});
 document.getElementById("closeModal").addEventListener("click",closeMatchModal);
 document.getElementById("matchModal").addEventListener("click",function(e){if(e.target.id==="matchModal")closeMatchModal();});
-health();loadScan();
+health();renderSavedForecasts();loadScan();
 })();
 </script>
 </body>
