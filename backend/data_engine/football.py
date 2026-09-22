@@ -21,48 +21,63 @@ async def team_last_results(team_id:int,last:int=10):
 async def team_upcoming(team_id:int):
     data=await api_get("eventsnext.php",{"id":team_id});return {"source":"TheSportsDB","events":data.get("events") or []}
 
-ESPN_LEAGUES = [
-    "eng.1","esp.1","ita.1","ger.1","fra.1","ned.1","por.1","bel.1","tur.1","sco.1",
-    "usa.1","mex.1","bra.1","arg.1","col.1","chi.1","jpn.1","kor.1","aus.1",
-    "uefa.champions","uefa.europa","uefa.europa.conf","eng.league_cup","eng.2",
-    "esp.2","ita.2","ger.2","fra.2"
-]
 ESPN_BASE="https://site.api.espn.com/apis/site/v2/sports/soccer"
 
 async def espn_fixtures(date=None):
+    """
+    Pull the ESPN soccer-wide scoreboard instead of querying only a small
+    hard-coded set of leagues. ESPN exposes a public soccer/all scoreboard,
+    which is much broader than the previous league list.
+    """
     d=date or today_utc()
-    async def one(league):
-        try:
-            async with httpx.AsyncClient(timeout=12) as c:
-                r=await c.get(f"{ESPN_BASE}/{league}/scoreboard",params={"dates":d})
-                r.raise_for_status()
-                data=r.json()
-                out=[]
-                for ev in data.get("events") or []:
-                    comp=(ev.get("competitions") or [{}])[0]
-                    teams=comp.get("competitors") or []
-                    home=next((x for x in teams if x.get("homeAway")=="home"),None)
-                    away=next((x for x in teams if x.get("homeAway")=="away"),None)
-                    if not home or not away: continue
-                    out.append({
-                        "idEvent":"espn-"+str(ev.get("id")),
-                        "strHomeTeam":(home.get("team") or {}).get("displayName"),
-                        "strAwayTeam":(away.get("team") or {}).get("displayName"),
-                        "dateEvent":d,
-                        "strTime":(ev.get("date") or "")[11:16],
-                        "strLeague":((comp.get("league") or {}).get("name") or league),
-                        "strVenue":((comp.get("venue") or {}).get("fullName") or ""),
-                        "strStatus":((comp.get("status") or {}).get("type") or {}).get("description"),
-                        "strSport":"Soccer",
-                        "source":"ESPN"
-                    })
-                return out
-        except Exception:
-            return []
-    results=await asyncio.gather(*(one(x) for x in ESPN_LEAGUES))
+    compact=d.replace("-", "")
+    try:
+        async with httpx.AsyncClient(timeout=25) as c:
+            r=await c.get(f"{ESPN_BASE}/all/scoreboard",params={"dates":compact})
+            r.raise_for_status()
+            data=r.json()
+    except Exception:
+        return {"source":"ESPN","date":d,"events":[]}
+
+    out=[]
+    for ev in data.get("events") or []:
+        comp=(ev.get("competitions") or [{}])[0]
+        teams=comp.get("competitors") or []
+        home=next((x for x in teams if x.get("homeAway")=="home"),None)
+        away=next((x for x in teams if x.get("homeAway")=="away"),None)
+        if not home or not away:
+            continue
+        season=ev.get("season") or {}
+        slug=season.get("slug") or ""
+        league=((comp.get("league") or {}).get("name")
+                or ((ev.get("league") or {}).get("name") if isinstance(ev.get("league"),dict) else None)
+                or slug.replace("-", " ").title()
+                or "Football")
+        out.append({
+            "idEvent":"espn-"+str(ev.get("id")),
+            "idHomeTeam":"espn-team-"+str((home.get("team") or {}).get("id")),
+            "idAwayTeam":"espn-team-"+str((away.get("team") or {}).get("id")),
+            "strHomeTeam":(home.get("team") or {}).get("displayName"),
+            "strAwayTeam":(away.get("team") or {}).get("displayName"),
+            "dateEvent":d,
+            "strTime":(ev.get("date") or "")[11:16],
+            "strLeague":league,
+            "strVenue":((comp.get("venue") or {}).get("fullName") or ""),
+            "strStatus":((comp.get("status") or {}).get("type") or {}).get("description"),
+            "strSport":"Soccer",
+            "source":"ESPN",
+            "source_team_ids":{
+                "home":(home.get("team") or {}).get("id"),
+                "away":(away.get("team") or {}).get("id")
+            }
+        })
+
     unique={}
-    for group in results:
-        for e in group:
-            k=(str(e.get("strHomeTeam","")).lower(),str(e.get("strAwayTeam","")).lower(),e.get("dateEvent"))
+    for e in out:
+        k=(_key(e.get("strHomeTeam")),_key(e.get("strAwayTeam")),e.get("dateEvent"))
+        if k[0] and k[1]:
             unique[k]=e
     return {"source":"ESPN","date":d,"events":list(unique.values())}
+
+def _key(v):
+    return "".join(ch.lower() for ch in (v or "") if ch.isalnum())
