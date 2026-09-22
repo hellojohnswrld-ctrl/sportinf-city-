@@ -78,7 +78,7 @@ async def _predict_event(event,odds_map=None):
     pred=baseline(hf["ppg"],af["ppg"],hf["avg_goal_difference"],af["avg_goal_difference"])
     odds=odds_map.get((_key(event.get("strHomeTeam")),_key(event.get("strAwayTeam")))) if odds_map else None
     val=value_layer(pred,odds)
-    out={"fixture_id":event.get("idEvent"),"home_team":event.get("strHomeTeam"),"away_team":event.get("strAwayTeam"),"date":event.get("dateEvent"),"time":event.get("strTime"),"league":event.get("strLeague"),"venue":event.get("strVenue"),"home_form":hf,"away_form":af,"prediction":pred,"odds":odds,"value":val,"analysis":analysis_layer(pred,val),"model_note":"Baseline model using recent form, goal difference and home advantage. Not a guarantee."}
+    out={"fixture_id":event.get("idEvent"),"home_team":event.get("strHomeTeam"),"away_team":event.get("strAwayTeam"),"home_logo":event.get("strHomeTeamBadge") or event.get("home_logo") or "","away_logo":event.get("strAwayTeamBadge") or event.get("away_logo") or "","date":event.get("dateEvent"),"time":event.get("strTime"),"league":event.get("strLeague"),"venue":event.get("strVenue"),"home_form":hf,"away_form":af,"prediction":pred,"odds":odds,"value":val,"analysis":analysis_layer(pred,val),"model_note":"Baseline model using recent form, goal difference and home advantage. Not a guarantee."}
     log_prediction(out);return out
 async def _scan_game(game,odds_map):
     home,away=game.get("home_team"),game.get("away_team")
@@ -106,7 +106,12 @@ async def search_matches(q: str = "", category: str = "all"):
     unique={}
     for e in events:
         k=(_key(e.get("strHomeTeam")),_key(e.get("strAwayTeam")),e.get("dateEvent"))
-        if k[0] and k[1]: unique[k]=e
+        if not (k[0] and k[1]): continue
+        if k not in unique: unique[k]=e
+        else:
+            cur=unique[k]
+            for fld in ("strHomeTeamBadge","strAwayTeamBadge","strVenue","idHomeTeam","idAwayTeam","idEvent","strLeague"):
+                if not cur.get(fld) and e.get(fld): cur[fld]=e.get(fld)
     query=_key(q); wanted=(category or "all").lower()
     matches=[]
     for e in unique.values():
@@ -152,7 +157,12 @@ async def scan_today():
     unique_events = {}
     for e in events:
         k = (_key(e.get("strHomeTeam")), _key(e.get("strAwayTeam")), e.get("dateEvent"))
-        if k[0] and k[1]: unique_events[k] = e
+        if not (k[0] and k[1]): continue
+        if k not in unique_events: unique_events[k] = e
+        else:
+            cur = unique_events[k]
+            for fld in ("strHomeTeamBadge","strAwayTeamBadge","strVenue","idHomeTeam","idAwayTeam","idEvent","strLeague"):
+                if not cur.get(fld) and e.get(fld): cur[fld] = e.get(fld)
     events = list(unique_events.values())
     # Build a broad historical form database from ESPN's soccer-wide results.
     # This avoids the 3-match/1-team free limits of TheSportsDB for analysis.
@@ -235,6 +245,8 @@ async def scan_today():
             "fixture_id": e.get("idEvent"),
             "home_team": e.get("strHomeTeam"),
             "away_team": e.get("strAwayTeam"),
+            "home_logo": e.get("strHomeTeamBadge") or e.get("home_logo") or "",
+            "away_logo": e.get("strAwayTeamBadge") or e.get("away_logo") or "",
             "date": e.get("dateEvent"),
             "time": e.get("strTime"),
             "league": e.get("strLeague"),
@@ -301,6 +313,8 @@ async def match_analysis(match_id:str):
     event_date = None
     home_name = ""
     away_name = ""
+    home_logo = ""
+    away_logo = ""
     event = None
 
     # Resolve the match first. Never make the analysis UI depend on ESPN.
@@ -317,6 +331,8 @@ async def match_analysis(match_id:str):
             away_team_obj = away.get("team") if isinstance(away, dict) and isinstance(away.get("team"), dict) else {}
             home_name = home_team_obj.get("displayName") or ""
             away_name = away_team_obj.get("displayName") or ""
+            home_logo = home_team_obj.get("logo") or ""
+            away_logo = away_team_obj.get("logo") or ""
             event_date = str(header.get("date") or "")[:10]
         except Exception:
             home_name = away_name = ""
@@ -342,6 +358,8 @@ async def match_analysis(match_id:str):
         if event:
             home_name = event.get("strHomeTeam") or ""
             away_name = event.get("strAwayTeam") or ""
+            home_logo = event.get("strHomeTeamBadge") or ""
+            away_logo = event.get("strAwayTeamBadge") or ""
             event_date = event.get("dateEvent") or ""
             comp = {"league": {"name": event.get("strLeague") or "Football"}}
             header = {
@@ -429,6 +447,8 @@ async def match_analysis(match_id:str):
         "event_id": match_id,
         "home_team": home_name,
         "away_team": away_name,
+        "home_logo": home_logo,
+        "away_logo": away_logo,
         "competition": league_obj.get("name") or "Football",
         "season": season_obj.get("displayName") or season_obj.get("year") or season_value or "",
         "week": ((header.get("week") or {}).get("number") if isinstance(header.get("week"),dict) else header.get("week")),
