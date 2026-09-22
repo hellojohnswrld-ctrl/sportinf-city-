@@ -6,8 +6,19 @@
 <title>AI Wager V2</title>
 <style>
 body{font-family:Arial,sans-serif;background:#08111f;color:#eef4ff;margin:0}
-main{max-width:1200px;margin:auto;padding:28px 18px 60px}
-h1{margin:0 0 6px;font-size:32px}.muted,.note{color:#91a0b8}
+main{max-width:1240px;margin:auto;padding:24px 18px 60px}
+h1{margin:0 0 6px;font-size:clamp(25px,4vw,34px)}.muted,.note{color:#91a0b8}
+.app-nav{position:sticky;top:0;z-index:20;background:rgba(8,17,31,.94);backdrop-filter:blur(12px);border-bottom:1px solid #1d2d43;padding:10px 0;margin-bottom:18px}
+.nav-inner{max-width:1240px;margin:auto;display:flex;gap:8px;align-items:center;justify-content:space-between;padding:0 18px}
+.nav-tabs{display:flex;gap:8px;flex-wrap:wrap}.nav-tab{background:#15243a;color:#cbd8ea;border:1px solid #243750}.nav-tab.active{background:#2563eb;color:#fff}
+.hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;flex-wrap:wrap}
+.logo-pair{display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:10px}
+.team-logo{width:52px;height:52px;object-fit:contain;border-radius:50%;background:#f7f9fc;padding:5px;box-shadow:0 6px 18px rgba(0,0,0,.22)}
+.team-logo.missing{opacity:.35}.favorite-btn{min-width:48px;padding:9px 11px;background:#172d49;border:1px solid #2b4666;font-size:20px}.favorite-btn.selected{background:#173f37;border-color:#2c8a69}
+.view{display:none}.view.active{display:block}
+.selected-hero{background:linear-gradient(135deg,#0f2137,#101c2d);border:1px solid #2a4260;border-radius:18px;padding:20px;margin-bottom:18px}
+.selected-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.selected-stat{background:#17263b;border-radius:12px;padding:12px}.selected-stat b{font-size:22px;display:block}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.filters button{padding:8px 12px}.filters button.active{background:#2563eb}
 .toolbar,.searchbox,.links{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
 input,select{background:#101c2d;color:#eef4ff;border:1px solid #22334d;border-radius:10px;padding:11px 12px;min-width:220px}
 button{background:#2563eb;color:#fff;border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer}
@@ -15,6 +26,7 @@ button.secondary,.close{background:#24334a}
 .status,.card,.toolbox,.questions{background:#101c2d;border:1px solid #22334d;border-radius:14px}
 .status{padding:12px 15px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:15px;margin-top:18px}
 .card{padding:18px}.teams{font-size:19px;font-weight:800;line-height:1.35}.league{font-size:13px;color:#91a0b8;margin-bottom:12px}
+.match-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.team-visual{display:flex;align-items:center;gap:9px}.team-visual img{width:34px;height:34px;object-fit:contain;border-radius:50%;background:#f7f9fc;padding:3px}.team-names{text-align:center}
 .probs,.values{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:15px 0}
 .prob,.value{background:#17263b;border-radius:10px;padding:10px;text-align:center}.prob b,.value b{display:block;font-size:20px}
 .bar{height:7px;background:#23344e;border-radius:99px;overflow:hidden;margin-top:7px}.bar span{display:block;height:100%;background:#3b82f6}
@@ -32,13 +44,14 @@ button.secondary,.close{background:#24334a}
 </style>
 </head>
 <body>
+<div class="app-nav"><div class="nav-inner"><div style="font-weight:900">⚽ AI Wager V2</div><div class="nav-tabs"><button class="nav-tab active" id="homeTab">All Matches</button><button class="nav-tab" id="selectedTab">⭐ My Selected Matches <span id="selectedCount">0</span></button></div></div></div>
 <main>
-<h1>AI Wager V2</h1>
-<div class="muted">Football intelligence dashboard · fixtures · form · probabilities · bookmaker odds · value scan</div>
+<div id="homeView" class="view active">
+<div class="hero"><div><h1>Football intelligence dashboard</h1><div class="muted">Fixtures · form · probabilities · odds · evidence</div></div></div>
 <div class="toolbar">
 <button id="scanBtn">🔎 Scan all available football</button>
 <button class="secondary" id="predBtn">Today's model cards</button>
-<button class="secondary" id="fixturesBtn">Fixtures only</button><button class="secondary" id="selectedBtn">⭐ My Selected Matches</button>
+<button class="secondary" id="fixturesBtn">Fixtures only</button>
 </div>
 <div class="searchbox">
 <input id="search" placeholder="Search team, league or cup…">
@@ -49,12 +62,18 @@ button.secondary,.close{background:#24334a}
 <button id="searchBtn">Search matches</button>
 </div>
 <div id="status" class="status">Checking system…</div>
-<section class="card" id="savedPanel" style="margin-top:18px;display:none"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><h2 style="margin:0">⭐ My Selected Matches</h2><div class="note">Only matches you choose are kept here for focused tracking.</div></div><button class="secondary" id="clearSelectedBtn">Clear all</button></div>
-<h2 style="margin-top:0">📌 Saved forecasts · after-match review</h2>
-<div class="note">Your selected forecast is stored in this browser so we can compare the original calculation with the final result later.</div>
-<div id="savedContent" style="margin-top:12px"></div>
-</section>
+<div id="homeSavedHint" class="note" style="margin:16px 0">⭐ Select only the matches you want to track. Your checklist lives on the separate <b>My Selected Matches</b> page.</div>
+
 <div id="content" class="grid"></div>
+</div>
+<div id="selectedView" class="view">
+<section class="selected-hero">
+<div class="hero"><div><h1>⭐ My Selected Matches</h1><div class="muted">Your personal checklist — only matches you deliberately add.</div></div><button class="secondary" id="backHomeBtn">← Back to matches</button></div>
+<div class="selected-stats"><div class="selected-stat"><small>Selected</small><b id="selectedTotal">0</b></div><div class="selected-stat"><small>Pending</small><b id="selectedPending">0</b></div><div class="selected-stat"><small>Finished</small><b id="selectedFinished">0</b></div></div>
+</section>
+<div class="filters"><button class="secondary active" data-filter="ALL">All</button><button class="secondary" data-filter="PENDING">⏳ Pending</button><button class="secondary" data-filter="FINAL">✓ Finished</button><button class="secondary" id="clearSelectedBtn">Clear all</button></div>
+<div id="savedContent" class="grid"></div>
+</div>
 <div id="matchModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
 <div class="modal-panel">
 <div class="modal-head"><div><h2 id="modalTitle" style="margin:0 0 5px">Match analysis</h2><div id="modalSub" class="muted"></div></div><button class="close" id="closeModal">✕ Close</button></div>
@@ -97,11 +116,33 @@ function links(o){
 function analysisButton(id){
   return '<button class="analysis-btn" data-match-id="'+esc(id)+'" style="margin-top:12px">📊 Open performance & probability analysis</button>';
 }
+function logo(src,team){
+  if(!src)return '<div class="team-logo missing" aria-hidden="true">⚽</div>';
+  return '<img class="team-logo" src="'+esc(src)+'" alt="'+esc(team||"Team")+' logo" loading="lazy" onerror="this.style.display=\'none\'">';
+}
+function isSelected(id){return savedForecasts().some(function(x){return String(x.event_id)===String(id);});}
+function toggleSelectedFromCard(p){
+  var id=String(p.fixture_id||"");
+  if(!id)return;
+  var rows=savedForecasts();
+  if(rows.some(function(x){return String(x.event_id)===id;})){
+    setSavedForecasts(rows.filter(function(x){return String(x.event_id)!==id;}));
+  }else{
+    rows.unshift({event_id:id,home_team:p.home_team,away_team:p.away_team,competition:p.league,date:p.date||"",time:p.time||"",home_logo:p.home_logo||"",away_logo:p.away_logo||"",saved_at:new Date().toISOString(),prediction:p.prediction||{},analysis:p.analysis||{},odds:p.odds||null,value:p.value||null,status:"PENDING"});
+    setSavedForecasts(rows);
+  }
+  renderSavedForecasts(); updateSelectedCount();
+}
+function favoriteButton(p){
+  var yes=isSelected(p.fixture_id);
+  return '<button class="favorite-btn '+(yes?"selected":"")+'" title="'+(yes?"Remove from selected matches":"Add to selected matches")+'" aria-label="'+(yes?"Remove from selected matches":"Add to selected matches")+'" data-fav-id="'+esc(p.fixture_id)+'">'+(yes?"★":"☆")+'</button>';
+}
 function card(p){
   var q=p.prediction||{},hp=pct(q.home_probability),dp=pct(q.draw_probability),ap=pct(q.away_probability),a=p.analysis||{};
   return '<article class="card">'+
-    '<div class="league">'+esc(p.league||"Football")+' · '+esc(p.date||"")+' '+esc((p.time||"").slice(0,5))+'</div>'+
-    '<div class="teams">'+esc(p.home_team||"Home")+'<br>vs<br>'+esc(p.away_team||"Away")+'</div>'+
+    '<div class="match-top"><div class="league">'+esc(p.league||"Football")+' · '+esc(p.date||"")+' '+esc((p.time||"").slice(0,5))+'</div>'+favoriteButton(p)+'</div>'+
+    '<div class="logo-pair">'+logo(p.home_logo,p.home_team)+logo(p.away_logo,p.away_team)+'</div>'+
+    '<div class="teams team-names">'+esc(p.home_team||"Home")+'<br>vs<br>'+esc(p.away_team||"Away")+'</div>'+
     '<div style="margin-top:10px"><span class="badge">'+esc(q.confidence||a.signal||"SCAN")+'</span></div>'+
     (q.home_probability!==undefined?'<div class="probs"><div class="prob">HOME<b>'+hp+'%</b><div class="bar"><span style="width:'+hp+'%"></span></div></div><div class="prob">DRAW<b>'+dp+'%</b><div class="bar"><span style="width:'+dp+'%"></span></div></div><div class="prob">AWAY<b>'+ap+'%</b><div class="bar"><span style="width:'+ap+'%"></span></div></div></div>':"")+
     '<h3>Odds & value</h3><div class="values">'+values(p.value)+'</div>'+
@@ -113,13 +154,15 @@ function card(p){
     '<br>Goal difference: '+esc(p.home_form&&p.home_form.avg_goal_difference!=null?p.home_form.avg_goal_difference:"—")+' — '+esc(p.away_form&&p.away_form.avg_goal_difference!=null?p.away_form.avg_goal_difference:"—")+'</div></article>';
 }
 function savedForecasts(){try{return JSON.parse(localStorage.getItem("aiWagerSavedForecasts")||"[]");}catch(e){return [];}}
-function setSavedForecasts(rows){localStorage.setItem("aiWagerSavedForecasts",JSON.stringify(rows));}
-function selectedIds(){return savedForecasts();}
+function setSavedForecasts(rows){localStorage.setItem("aiWagerSavedForecasts",JSON.stringify(rows));updateSelectedCount();}
+function updateSelectedCount(){var n=savedForecasts().length;document.getElementById("selectedCount").textContent=n?"("+n+")":"";var t=document.getElementById("selectedTotal");if(t)t.textContent=n;}
+
 function saveCurrentForecast(d){
   var rows=savedForecasts(),id=String(d.event_id);
   rows=rows.filter(function(x){return String(x.event_id)!==id;});
-  rows.unshift({event_id:id,home_team:d.home_team,away_team:d.away_team,competition:d.competition,date:d.date||"",saved_at:new Date().toISOString(),prediction:d.prediction,status:"PENDING"});
-  setSavedForecasts(rows);renderSavedForecasts();
+  rows.unshift({event_id:id,home_team:d.home_team,away_team:d.away_team,competition:d.competition,date:d.date||"",saved_at:new Date().toISOString(),home_logo:d.home_logo||"",away_logo:d.away_logo||"",prediction:d.prediction||{},analysis:d.analysis||{},status:"PENDING"});
+  setSavedForecasts(rows);renderSavedForecasts();updateSelectedCount();
+  showView("selected");
 }
 async function refreshSavedResult(id){
   try{var d=await getJson("/api/match/"+encodeURIComponent(id)+"/result");if(!d.completed)return;
@@ -130,11 +173,16 @@ async function refreshSavedResult(id){
     setSavedForecasts(rows);renderSavedForecasts();
   }catch(e){}
 }
+var currentSelectedFilter="ALL";
 function renderSavedForecasts(){
-  var panel=document.getElementById("savedPanel"),c=document.getElementById("savedContent"),rows=savedForecasts();
-  if(!rows.length){panel.style.display="none";return;} panel.style.display="block";
-  c.innerHTML=rows.map(function(r){var p=r.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),top=hp>=dp&&hp>=ap?"HOME":dp>=ap?"DRAW":"AWAY",label=top==="HOME"?r.home_team:top==="AWAY"?r.away_team:"Draw",status=r.status==="FINAL"?(r.forecast_correct?"✅ Forecast matched":"❌ Forecast did not match"):"⏳ Waiting for final result";
-    return '<div class="signal"><b>'+esc(r.home_team)+' vs '+esc(r.away_team)+'</b><br><span class="meta">'+esc(r.date)+' · '+esc(r.competition||"Football")+'</span><br>Original forecast: <b>'+esc(label)+'</b> · H '+hp+'% / D '+dp+'% / A '+ap+'%'+(r.final_score?' · Final: <b>'+esc(r.final_score)+'</b>':'')+'<br>'+status+' <button class="secondary review-btn" data-id="'+esc(r.event_id)+'" style="padding:7px 10px;margin-left:8px">Check result</button> <button class="secondary delete-btn" data-id="'+esc(r.event_id)+'" style="padding:7px 10px">Remove</button></div>';}).join("");
+  var c=document.getElementById("savedContent"),rows=savedForecasts();
+  var pending=rows.filter(function(x){return x.status!=="FINAL";}).length,finished=rows.filter(function(x){return x.status==="FINAL";}).length;
+  var pt=document.getElementById("selectedPending"),ft=document.getElementById("selectedFinished");
+  if(pt)pt.textContent=pending;if(ft)ft.textContent=finished;updateSelectedCount();
+  if(!rows.length){c.innerHTML='<div class="empty card">No selected matches yet. Go to <b>All Matches</b> and tap ☆ on a match to add it to your checklist.</div>';return;}
+  var shown=rows.filter(function(r){return currentSelectedFilter==="ALL"||r.status===currentSelectedFilter;});
+  c.innerHTML=shown.map(function(r){var p=r.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),top=hp>=dp&&hp>=ap?"HOME":dp>=ap?"DRAW":"AWAY",label=top==="HOME"?r.home_team:top==="AWAY"?r.away_team:"Draw",status=r.status==="FINAL"?(r.forecast_correct?"✅ Forecast matched":"❌ Forecast did not match"):"⏳ Waiting for final result";
+    return '<article class="card"><div class="match-top"><div class="league">'+esc(r.competition||"Football")+' · '+esc(r.date||"")+'</div><button class="favorite-btn selected delete-btn" data-id="'+esc(r.event_id)+'" title="Remove from selected">★</button></div><div class="logo-pair">'+logo(r.home_logo,r.home_team)+logo(r.away_logo,r.away_team)+'</div><div class="teams team-names">'+esc(r.home_team)+'<br>vs<br>'+esc(r.away_team)+'</div><div class="probs"><div class="prob">HOME<b>'+hp+'%</b></div><div class="prob">DRAW<b>'+dp+'%</b></div><div class="prob">AWAY<b>'+ap+'%</b></div></div><div class="signal"><b>Original forecast: '+esc(label)+'</b><br>'+status+(r.final_score?' · Final <b>'+esc(r.final_score)+'</b>':'')+'</div><div class="meta">Selected '+esc(new Date(r.saved_at).toLocaleString())+'<br>Original model probability: '+pct(r.model_probability||Math.max(p.home_probability||0,p.draw_probability||0,p.away_probability||0))+'%'+(r.final_score?' · Final score '+esc(r.final_score):'')+'</div><div class="toolbar"><button class="secondary review-btn" data-id="'+esc(r.event_id)+'">↻ Check result</button></div></article>';}).join("")||'<div class="empty card">No matches in this filter.</div>';
   c.querySelectorAll(".review-btn").forEach(function(b){b.addEventListener("click",function(){refreshSavedResult(b.getAttribute("data-id"));});});
   c.querySelectorAll(".delete-btn").forEach(function(b){b.addEventListener("click",function(){setSavedForecasts(savedForecasts().filter(function(x){return String(x.event_id)!==String(b.getAttribute("data-id"));}));renderSavedForecasts();});});
 }
@@ -166,9 +214,9 @@ async function openMatchAnalysis(id){
       '<div class="chart-wrap"><div class="chart-title"><b>Previous performance · points per match</b></div><div class="legend"><span>Home team</span><span>Away team</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><b>'+esc(d.home_team)+'</b>'+svgPerformance(d.history&&d.history.home,"#3b82f6")+'</div><div><b>'+esc(d.away_team)+'</b>'+svgPerformance(d.history&&d.history.away,"#f59e0b")+'</div></div><div class="modal-note">W=3, D=1, L=0. This is an evidence aid, not a guarantee.</div></div>'+
       '<div class="probs"><div class="prob">HOME<b>'+hp+'%</b><div class="bar"><span style="width:'+hp+'%"></span></div></div><div class="prob">DRAW<b>'+dp+'%</b><div class="bar"><span style="width:'+dp+'%"></span></div></div><div class="prob">AWAY<b>'+ap+'%</b><div class="bar"><span style="width:'+ap+'%"></span></div></div></div>'+
       '<div class="analysis-grid"><section class="toolbox"><h3 style="margin-top:0">Probability toolbox · IF / THEN</h3>'+q+'</section><section class="questions"><h3 style="margin-top:0">Questions before wagering</h3><ul>'+((d.questions_to_check||[]).map(function(x){return '<li style="margin:9px 0">'+esc(x)+'</li>';}).join(""))+'</ul><div class="modal-note">'+esc(d.disclaimer||"")+'</div></section></div>'+
-      '<div style="margin:14px 0"><button id="saveForecastBtn">📌 Save this forecast for after-match review</button></div><div class="modal-note">The saved record keeps the original probabilities and match date for later comparison.</div>'+
+      '<div style="margin:14px 0"><button id="saveForecastBtn">'+(isSelected(d.event_id)?"✓ Selected for tracking":"⭐ Add to checklist")+'</button></div><div class="modal-note">The saved record keeps the original probabilities and match date for later comparison.</div>'+
       '<div class="analysis-grid" style="margin-top:14px"><section class="toolbox"><h3 style="margin-top:0">'+esc(d.home_team)+' recent results</h3>'+historyRows(d.history&&d.history.home)+'</section><section class="toolbox"><h3 style="margin-top:0">'+esc(d.away_team)+' recent results</h3>'+historyRows(d.history&&d.history.away)+'</section></div>';
-    var saveBtn=document.getElementById("saveForecastBtn"); if(saveBtn) saveBtn.addEventListener("click",function(){saveCurrentForecast(d);saveBtn.textContent="✓ Selected for tracking";saveBtn.disabled=true;});
+    var saveBtn=document.getElementById("saveForecastBtn"); if(saveBtn) saveBtn.addEventListener("click",function(){if(isSelected(d.event_id)){setSavedForecasts(savedForecasts().filter(function(x){return String(x.event_id)!==String(d.event_id);}));saveBtn.textContent="⭐ Add to checklist";}else{saveCurrentForecast(d);saveBtn.textContent="✓ Selected for tracking";}renderSavedForecasts();updateSelectedCount();});
   }catch(e){body.innerHTML='<div class="empty error">'+esc(e.message||"Interactive match analysis unavailable.")+'</div>';}
 }
 function bindAnalysisButtons(){
@@ -186,18 +234,18 @@ async function searchMatches(){
   try{
     var d=await getJson("/api/search?q="+encodeURIComponent(q)+"&category="+encodeURIComponent(cat));
     setStatus("🔎 "+(d.count||0)+" matches · "+esc(q||"all football")+" · "+esc(cat));
-    c.innerHTML=d.matches&&d.matches.length?d.matches.map(function(e){return '<article class="card"><div class="league"><span class="badge">'+esc(e.competition_category)+'</span> · '+esc(e.strLeague||"Football")+'</div><div class="teams">'+esc(e.strHomeTeam)+" vs "+esc(e.strAwayTeam)+'</div><div class="meta">'+esc(e.dateEvent||"")+" "+esc((e.strTime||"").slice(0,5))+'<br>'+esc(e.strVenue||"")+'<br>Status: '+esc(e.strStatus||"Scheduled")+" · Season: "+esc(e.strSeason||"—")+(e.strWeek?" · Round/Week: "+esc(e.strWeek):"")+'</div>'+analysisButton(e.idEvent||"")+'</article>';}).join(""):'<div class="empty">No matches found.</div>';
+    window.__lastMatches=d.matches||[];c.innerHTML=d.matches&&d.matches.length?d.matches.map(function(e){return '<article class="card"><div class="match-top"><div class="league"><span class="badge">'+esc(e.competition_category)+'</span> · '+esc(e.strLeague||"Football")+'</div></div><div class="logo-pair">'+logo(e.strHomeTeamBadge,e.strHomeTeam)+logo(e.strAwayTeamBadge,e.strAwayTeam)+'</div><div class="teams team-names">'+esc(e.strHomeTeam)+" vs "+esc(e.strAwayTeam)+'</div><div class="meta">'+esc(e.dateEvent||"")+" "+esc((e.strTime||"").slice(0,5))+'<br>'+esc(e.strVenue||"")+'<br>Status: '+esc(e.strStatus||"Scheduled")+" · Season: "+esc(e.strSeason||"—")+(e.strWeek?" · Round/Week: "+esc(e.strWeek):"")+'</div>'+analysisButton(e.idEvent||"")+'</article>';}).join(""):'<div class="empty">No matches found.</div>';
     bindAnalysisButtons();
   }catch(e){c.innerHTML='<div class="empty error">'+esc(e.message)+'</div>';}
 }
 async function loadScan(){
   var c=document.getElementById("content");c.innerHTML='<div class="empty">Scanning free football fixture sources and analysing matches…</div>';
-  try{var d=await getJson("/api/scan/today");setStatus("🟢 Scan complete · "+(d.count||0)+" football matches found · "+esc(d.source||"multiple sources")+" · Odds: "+esc(d.odds_status||"not configured"));c.innerHTML=d.matches&&d.matches.length?d.matches.map(card).join(""):'<div class="empty">No football fixtures returned.</div>';bindAnalysisButtons();}
+  try{var d=await getJson("/api/scan/today");setStatus("🟢 Scan complete · "+(d.count||0)+" football matches found · "+esc(d.source||"multiple sources")+" · Odds: "+esc(d.odds_status||"not configured"));window.__lastMatches=d.matches||[];c.innerHTML=d.matches&&d.matches.length?d.matches.map(card).join(""):'<div class="empty">No football fixtures returned.</div>';bindAnalysisButtons();}
   catch(e){c.innerHTML='<div class="empty error">'+esc(e.message)+'</div>';}
 }
 async function loadPredictions(){
   var c=document.getElementById("content");c.innerHTML='<div class="empty">Loading model cards…</div>';
-  try{var d=await getJson("/api/predictions/today");c.innerHTML=d.predictions&&d.predictions.length?d.predictions.map(card).join(""):'<div class="empty">No model fixtures today.</div>';bindAnalysisButtons();}
+  try{var d=await getJson("/api/predictions/today");window.__lastMatches=d.predictions||[];c.innerHTML=d.predictions&&d.predictions.length?d.predictions.map(card).join(""):'<div class="empty">No model fixtures today.</div>';bindAnalysisButtons();}
   catch(e){c.innerHTML='<div class="empty error">'+esc(e.message)+'</div>';}
 }
 async function loadFixtures(){
@@ -205,11 +253,25 @@ async function loadFixtures(){
   try{var d=await getJson("/api/fixtures/today");c.innerHTML=d.events&&d.events.length?d.events.map(function(e){return '<article class="card"><div class="league">'+esc(e.strLeague||"Football")+'</div><div class="teams">'+esc(e.strHomeTeam)+" vs "+esc(e.strAwayTeam)+'</div><div class="meta">'+esc(e.dateEvent||"")+" "+esc((e.strTime||"").slice(0,5))+'<br>'+esc(e.strVenue||"")+'</div></article>';}).join(""):'<div class="empty">No fixtures.</div>';}
   catch(e){c.innerHTML='<div class="empty error">'+esc(e.message)+'</div>';}
 }
+function showView(name){
+  var home=name==="home",sv=document.getElementById("selectedView");
+  document.getElementById("homeView").classList.toggle("active",home);
+  sv.classList.toggle("active",!home);
+  document.getElementById("homeTab").classList.toggle("active",home);
+  document.getElementById("selectedTab").classList.toggle("active",!home);
+  if(!home)renderSavedForecasts();
+  if(home)window.scrollTo({top:0,behavior:"smooth"});
+  else window.scrollTo({top:0,behavior:"smooth"});
+  if(location.hash!=="#"+(home?"home":"selected"))history.replaceState(null,"","#"+(home?"home":"selected"));
+}
+document.getElementById("homeTab").addEventListener("click",function(){showView("home");});
+document.getElementById("selectedTab").addEventListener("click",function(){showView("selected");});
+document.getElementById("backHomeBtn").addEventListener("click",function(){showView("home");});
+document.getElementById("clearSelectedBtn").addEventListener("click",function(){if(confirm("Remove all selected matches?")){setSavedForecasts([]);renderSavedForecasts();}});
+document.querySelectorAll("[data-filter]").forEach(function(b){b.addEventListener("click",function(){currentSelectedFilter=b.getAttribute("data-filter");document.querySelectorAll("[data-filter]").forEach(function(x){x.classList.toggle("active",x===b);});renderSavedForecasts();});});
 document.getElementById("scanBtn").addEventListener("click",loadScan);
 document.getElementById("predBtn").addEventListener("click",loadPredictions);
 document.getElementById("fixturesBtn").addEventListener("click",loadFixtures);
-document.getElementById("selectedBtn").addEventListener("click",function(){document.getElementById("savedPanel").scrollIntoView({behavior:"smooth"});renderSavedForecasts();});
-document.getElementById("clearSelectedBtn").addEventListener("click",function(){if(confirm("Remove all selected matches?")){setSavedForecasts([]);renderSavedForecasts();}});
 document.getElementById("searchBtn").addEventListener("click",searchMatches);
 document.getElementById("search").addEventListener("keydown",function(e){if(e.key==="Enter")searchMatches();});
 document.getElementById("closeModal").addEventListener("click",closeMatchModal);
