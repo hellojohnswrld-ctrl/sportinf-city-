@@ -81,3 +81,45 @@ async def espn_fixtures(date=None):
 
 def _key(v):
     return "".join(ch.lower() for ch in (v or "") if ch.isalnum())
+
+
+async def espn_recent_results(date=None, days=45):
+    """Fetch a rolling window of completed soccer results from ESPN's broad feed."""
+    end=datetime.fromisoformat(date or today_utc()).date()
+    start=end - __import__("datetime").timedelta(days=days)
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            r=await c.get(
+                f"{ESPN_BASE}/all/scoreboard",
+                params={"dates":f"{start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}"}
+            )
+            r.raise_for_status()
+            data=r.json()
+    except Exception:
+        return {"source":"ESPN","events":[]}
+    out=[]
+    for ev in data.get("events") or []:
+        comp=(ev.get("competitions") or [{}])[0]
+        teams=comp.get("competitors") or []
+        home=next((x for x in teams if x.get("homeAway")=="home"),None)
+        away=next((x for x in teams if x.get("homeAway")=="away"),None)
+        if not home or not away:
+            continue
+        hs=home.get("score")
+        aws=away.get("score")
+        try:
+            hs=float(hs); aws=float(aws)
+        except (TypeError,ValueError):
+            continue
+        status=((comp.get("status") or {}).get("type") or {}).get("completed")
+        if status is False:
+            continue
+        out.append({
+            "date":(ev.get("date") or "")[:10],
+            "home_team":(home.get("team") or {}).get("displayName"),
+            "away_team":(away.get("team") or {}).get("displayName"),
+            "home_goals":hs,
+            "away_goals":aws,
+            "event_id":"espn-"+str(ev.get("id"))
+        })
+    return {"source":"ESPN","events":out}
