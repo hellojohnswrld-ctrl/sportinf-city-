@@ -30,8 +30,28 @@ def _form_stats(events,team_id):
         else:continue
         if e.get("intHomeScore") in (None,"") or e.get("intAwayScore") in (None,""):continue
         played+=1;gd+=gf-ga;points+=3 if gf>ga else 1 if gf==ga else 0
-    return {"played":int(played),"ppg":round(points/played,3) if played else 1.0,"avg_goal_difference":round(gd/played,3) if played else 0.0}
+    return {"played":int(played),"ppg":round(points/played,3) if played else 1.0,"avg_goal_difference":round(gd/played,3) if played else 0.0,"avg_goals_for":round(sum(_num(e.get("intHomeScore") if str(e.get("idHomeTeam"))==str(team_id) else e.get("intAwayScore")) for e in events if str(e.get("idHomeTeam"))==str(team_id) or str(e.get("idAwayTeam"))==str(team_id))/played,3) if played else 1.4,"avg_goals_against":round(sum(_num(e.get("intAwayScore") if str(e.get("idHomeTeam"))==str(team_id) else e.get("intHomeScore")) for e in events if str(e.get("idHomeTeam"))==str(team_id) or str(e.get("idAwayTeam"))==str(team_id))/played,3) if played else 1.4}
 def _key(v):return "".join(ch.lower() for ch in (v or "") if ch.isalnum())
+def _name_form_stats(events):
+    stats={}
+    for e in events or []:
+        h,a=e.get("home_team"),e.get("away_team")
+        if not h or not a: continue
+        hg,ag=_num(e.get("home_goals")),_num(e.get("away_goals"))
+        for name,gf,ga in ((h,hg,ag),(a,ag,hg)):
+            k=_key(name)
+            if not k: continue
+            x=stats.setdefault(k,{"played":0,"points":0.0,"gf":0.0,"ga":0.0})
+            x["played"]+=1; x["gf"]+=gf; x["ga"]+=ga
+            x["points"]+=3 if gf>ga else 1 if gf==ga else 0
+    for x in stats.values():
+        n=x["played"]; x.update(ppg=x["points"]/n if n else 1.0,
+                                avg_goal_difference=(x["gf"]-x["ga"])/n if n else 0.0,
+                                avg_goals_for=x["gf"]/n if n else 1.4,
+                                avg_goals_against=x["ga"]/n if n else 1.4)
+    return stats
+
+
 async def _odds_map():
     if not ODDS_API_KEY:return {},[]
     try:
@@ -92,6 +112,14 @@ async def scan_today():
         k = (_key(e.get("strHomeTeam")), _key(e.get("strAwayTeam")), e.get("dateEvent"))
         if k[0] and k[1]: unique_events[k] = e
     events = list(unique_events.values())
+    # Build a broad historical form database from ESPN's soccer-wide results.
+    # This avoids the 3-match/1-team free limits of TheSportsDB for analysis.
+    try:
+        recent = await football.espn_recent_results(data.get("date"), 45)
+        espn_form = _name_form_stats(recent.get("events") or [])
+    except Exception:
+        espn_form = {}
+
     odds_map = {}
     odds_status = "not_configured"
     if ODDS_API_KEY:
@@ -136,9 +164,21 @@ async def scan_today():
     matches = []
     for e in events:
         hi, ai = e.get("idHomeTeam"), e.get("idAwayTeam")
-        hf = form_cache.get(int(hi), {"played":0,"ppg":1.0,"avg_goal_difference":0.0}) if hi and str(hi).isdigit() else {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
-        af = form_cache.get(int(ai), {"played":0,"ppg":1.0,"avg_goal_difference":0.0}) if ai and str(ai).isdigit() else {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
-        pred = baseline(hf["ppg"], af["ppg"], hf["avg_goal_difference"], af["avg_goal_difference"])
+        neutral={"played":0,"ppg":1.0,"avg_goal_difference":0.0,"avg_goals_for":1.4,"avg_goals_against":1.4}
+        hf = form_cache.get(int(hi), neutral) if hi and str(hi).isdigit() else espn_form.get(_key(e.get("strHomeTeam")), neutral)
+        af = form_cache.get(int(ai), neutral) if ai and str(ai).isdigit() else espn_form.get(_key(e.get("strAwayTeam")), neutral)
+        market=None
+        if odds_map:
+            oo=odds_map.get((_key(e.get("strHomeTeam")),_key(e.get("strAwayTeam"))))
+            if oo:
+                market={k:1/v for k,v in oo.get("odds",{}).items() if v and v>1}
+        pred = baseline(hf["ppg"], af["ppg"], hf["avg_goal_difference"], af["avg_goal_difference"],
+                        odds=None)
+        from backend.prediction_engine.football_model import advanced_model
+        pred = advanced_model(hf["ppg"],af["ppg"],hf["avg_goal_difference"],af["avg_goal_difference"],
+                              hf.get("avg_goals_for",1.4),hf.get("avg_goals_against",1.4),
+                              af.get("avg_goals_for",1.4),af.get("avg_goals_against",1.4),
+                              hf.get("played",0),af.get("played",0),market)
         odds = odds_map.get((_key(e.get("strHomeTeam")),_key(e.get("strAwayTeam")))) if odds_map else None
         val = value_layer(pred, odds)
         detailed = hf["played"] > 0 and af["played"] > 0
@@ -159,12 +199,13 @@ async def scan_today():
             "venue": e.get("strVenue"),
             "home_form": hf,
             "away_form": af,
+            "data_sources": ["ESPN historical results"] if not (hi and str(hi).isdigit() and ai and str(ai).isdigit()) else ["TheSportsDB recent results","ESPN historical results"],
             "prediction": pred,
             "odds": odds,
             "value": val,
             "analysis": analysis,
             "data_quality": "detailed" if detailed else "fixture_only",
-            "model_note": "Prediction from recent form, goal difference and home advantage when form data is available; otherwise neutral baseline. Not a guarantee."
+            "model_note": "Advanced model uses a 45-day historical window, goals for/against, points rate, goal difference, home advantage and Poisson scoreline probabilities. Bookmaker prices are used only as a small calibration input when available. Not a guarantee."
         })
 
     matches.sort(key=lambda x: (-(x.get("analysis") or {}).get("score",0), x.get("time") or "", x.get("home_team") or ""))
@@ -174,7 +215,7 @@ async def scan_today():
         "count":len(matches),
         "odds_status":odds_status,
         "matches":matches,
-        "coverage_note":"Fixtures are aggregated from TheSportsDB plus ESPN's soccer-wide scoreboard. ESPN supplies broad fixture coverage; TheSportsDB supplies recent-form enrichment where numeric team IDs are available. Matches without recent-form data are still shown and explicitly marked low-data."
+        "coverage_note":"Fixtures come from TheSportsDB plus ESPN's soccer-wide scoreboard. Historical form is independently built from ESPN's rolling 45-day results, so ESPN fixtures no longer depend on TheSportsDB team-history limits. TheSportsDB history is retained as an additional source where available."
     }
 
 @app.get("/api/fixture/{fixture_id}")
