@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi import Request
 import os,hmac,hashlib,base64,time,httpx,datetime
-from backend.config import APP_NAME,APP_VERSION,THESPORTSDB_KEY,ODDS_API_KEY,ODDS_API_REGION,ODDS_API_SPORT,ODDS_API_ALL_SOCCER,PAYDUNYA_MASTER_KEY,PAYDUNYA_PRIVATE_KEY,PAYDUNYA_TOKEN,VIP_PRICE_XOF,VIP_MERCHANT_NAME,PAYDUNYA_ENV,PAYDUNYA_CALLBACK_URL,VIP_ACCESS_TTL
+from backend.config import APP_NAME,APP_VERSION,THESPORTSDB_KEY,ODDS_API_KEY,ODDS_API_REGION,ODDS_API_SPORT,ODDS_API_ALL_SOCCER
 from backend.data_engine import football
 from backend.data_engine.odds import fetch_odds,fetch_all_soccer_odds,match_odds,value_layer,analysis_layer
 from backend.prediction_engine.football_model import baseline
@@ -34,7 +34,7 @@ def _access_valid(token):
 @app.middleware("http")
 async def access_gate(request:Request,call_next):
     path=request.url.path
-    if path.startswith("/api/") and path not in ("/api/access","/api/vip/payment/callback"):
+    if path.startswith("/api/") and path != "/api/access":
         if not _access_valid(request.cookies.get("john_access")):
             return JSONResponse({"error":"Access key required"},status_code=401)
     return await call_next(request)
@@ -181,11 +181,7 @@ async def search_matches(q: str = "", category: str = "all"):
 
 
 @app.get("/api/vip")
-async def vip_forecast(request:Request):
-    entitled=await vip_access(request)
-    if not entitled.get("entitled"):
-        return JSONResponse({"error":"VIP payment required","entitled":False},status_code=402)
-
+async def vip_forecast():
     """Return 15 upcoming matches with the strongest model probabilities."""
     today=datetime.date.today()
     events=[]
@@ -217,152 +213,6 @@ async def vip_forecast(request:Request):
         rows.append({"fixture_id":e.get("idEvent"),"home_team":e.get("strHomeTeam"),"away_team":e.get("strAwayTeam"),"competition":e.get("strLeague"),"date":e.get("dateEvent"),"time":e.get("strTime"),"venue":e.get("strVenue"),"home_logo":e.get("strHomeTeamBadge") or "","away_logo":e.get("strAwayTeamBadge") or "","prediction":pred,"selection":top,"selection_probability":probs[top],"data_quality":"standard ESPN recent-form sample"})
     rows.sort(key=lambda x:x["selection_probability"],reverse=True)
     return {"title":"JOHN FORCAST VIP","count":min(15,len(rows)),"matches":rows[:15],"disclaimer":"These are the 15 highest model-probability upcoming matches available to the scanner. Probabilities are estimates, not guarantees."}
-
-@app.post("/api/vip/payment")
-async def vip_payment(request:Request):
-    """Create a PayDunya invoice for the VIP forecast. The server never trusts the browser for payment status."""
-    if not all((PAYDUNYA_MASTER_KEY,PAYDUNYA_PRIVATE_KEY,PAYDUNYA_TOKEN)):
-        return JSONResponse({"error":"VIP payments are not configured yet. Add PayDunya production keys in Render environment variables."},status_code=503)
-    if VIP_PRICE_XOF<=0:
-        return JSONResponse({"error":"VIP price is not configured."},status_code=503)
-    try:
-        body=await request.json()
-    except Exception:
-        body={}
-    email=str(body.get("email") or "").strip()
-    phone=str(body.get("phone") or "").strip()
-    provider=str(body.get("provider") or "checkout").strip().lower()
-    name=str(body.get("name") or "VIP Customer").strip()[:100]
-    if not email:
-        return JSONResponse({"error":"Email is required."},status_code=400)
-    if provider in ("tmoney","moov") and not phone:
-        return JSONResponse({"error":"A T-Money or Moov Togo phone number is required."},status_code=400)
-    base="https://app.paydunya.com/sandbox-api/v1" if PAYDUNYA_ENV=="sandbox" else "https://app.paydunya.com/api/v1"
-    callback=PAYDUNYA_CALLBACK_URL or (str(request.base_url).rstrip("/")+"/api/vip/payment/callback")
-    payload={
-        "invoice":{
-            "total_amount":VIP_PRICE_XOF,
-            "description":"JOHN FORCAST VIP — 15-match premium forecast",
-            "custom_data":{"product":"vip_forecast_15","email":email,"phone":phone,"provider":provider}
-        },
-        "store":{"name":VIP_MERCHANT_NAME},
-        "customer":{"name":name,"email":email,"phone":phone},
-        "actions":{"callback_url":callback,"return_url":str(request.base_url).rstrip("/")+"/#vip","cancel_url":str(request.base_url).rstrip("/")+"/#vip"}
-    }
-    try:
-        headers={"Content-Type":"application/json","PAYDUNYA-MASTER-KEY":PAYDUNYA_MASTER_KEY,"PAYDUNYA-PRIVATE-KEY":PAYDUNYA_PRIVATE_KEY,"PAYDUNYA-TOKEN":PAYDUNYA_TOKEN}
-        async with httpx.AsyncClient(timeout=25) as client:
-            r=await client.post(base+"/checkout-invoice/create",json=payload,headers=headers)
-            data=r.json()
-            if data.get("response_code")!="00":
-                return JSONResponse({"error":data.get("response_text") or "Unable to create payment invoice."},status_code=502)
-            token=data.get("token")
-            payment_url=data.get("response_text")
-            if not token:
-                return JSONResponse({"error":"Payment provider did not return an invoice token."},status_code=502)
-            # SoftPay is optional: it lets T-Money/Moov customers stay on the app.
-            if provider in ("tmoney","moov"):
-                if provider=="tmoney":
-                    endpoint=base+"/softpay/t-money-togo"
-                    soft={"name_t_money":name,"email_t_money":email,"phone_t_money":phone,"payment_token":token}
-                else:
-                    endpoint=base+"/softpay/moov-togo"
-                    soft={"moov_togo_customer_fullname":name,"moov_togo_email":email,"moov_togo_customer_address":"Lome, Togo","moov_togo_phone_number":phone,"payment_token":token}
-                sr=await client.post(endpoint,json=soft,headers=headers)
-                try: soft_data=sr.json()
-                except Exception: soft_data={"success":False,"message":"Payment initiation response was not JSON."}
-                if not soft_data.get("success"):
-                    return JSONResponse({"error":soft_data.get("message") or "Mobile-money payment could not be started.","payment_url":payment_url,"token":token},status_code=502)
-                return {"ok":True,"mode":"softpay","provider":provider,"token":token,"payment_url":payment_url,"amount":VIP_PRICE_XOF,"currency":"XOF","message":soft_data.get("message") or "Payment initiated. Complete the confirmation on your phone."}
-            return {"ok":True,"mode":"checkout","provider":"checkout","token":token,"payment_url":payment_url,"amount":VIP_PRICE_XOF,"currency":"XOF"}
-    except Exception:
-        return JSONResponse({"error":"Payment provider is temporarily unavailable."},status_code=502)
-
-def _paydunya_headers():
-    return {"Content-Type":"application/json","PAYDUNYA-MASTER-KEY":PAYDUNYA_MASTER_KEY,"PAYDUNYA-PRIVATE-KEY":PAYDUNYA_PRIVATE_KEY,"PAYDUNYA-TOKEN":PAYDUNYA_TOKEN}
-
-def _vip_cookie(token):
-    payload=str(int(time.time()))+"."+token
-    sig=hmac.new(ACCESS_SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
-    return base64.urlsafe_b64encode((payload+"."+sig).encode()).decode()
-
-def _vip_cookie_valid(token):
-    if not token or not ACCESS_SECRET:
-        return False
-    try:
-        raw=base64.urlsafe_b64decode(token.encode()).decode()
-        ts,invoice,sig=raw.split(".",2)
-        if time.time()-int(ts)>VIP_ACCESS_TTL:return False
-        expected=hmac.new(ACCESS_SECRET.encode(),(ts+"."+invoice).encode(),hashlib.sha256).hexdigest()
-        return hmac.compare_digest(sig,expected)
-    except Exception:
-        return False
-
-async def _confirm_vip_payment(token):
-    if not token or not all((PAYDUNYA_MASTER_KEY,PAYDUNYA_PRIVATE_KEY,PAYDUNYA_TOKEN)): return None
-    base="https://app.paydunya.com/sandbox-api/v1" if PAYDUNYA_ENV=="sandbox" else "https://app.paydunya.com/api/v1"
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            r=await client.get(base+"/checkout-invoice/confirm/"+token,headers=_paydunya_headers())
-            data=r.json()
-            if data.get("response_code")!="00": return None
-            return data
-    except Exception:
-        return None
-
-@app.get("/api/vip/payment/status")
-async def vip_payment_status(request:Request, token:str=""):
-    data=await _confirm_vip_payment(token)
-    if not data:
-        return JSONResponse({"status":"UNKNOWN","paid":False},status_code=502)
-    invoice=data.get("invoice") or {}
-    status=str(invoice.get("status") or data.get("status") or "PENDING").upper()
-    paid=status=="COMPLETED"
-    response={"status":status,"paid":paid,"token":token,"amount":VIP_PRICE_XOF}
-    if paid:
-        response["vip_access"]="granted"
-        response_obj=JSONResponse(response)
-        response_obj.set_cookie("john_vip",_vip_cookie(token),httponly=True,secure=True,samesite="lax",max_age=VIP_ACCESS_TTL,path="/")
-        return response_obj
-    return response
-
-@app.post("/api/vip/payment/callback")
-async def vip_payment_callback(request:Request):
-    """PayDunya IPN endpoint. It confirms the token server-side before recording success."""
-    try:
-        raw=await request.body()
-        from urllib.parse import parse_qs
-        form={k:v[0] for k,v in parse_qs(raw.decode("utf-8")).items()}
-        token=str(form.get("token") or "").strip()
-        status=str(form.get("status") or "").lower()
-        received_hash=str(form.get("hash") or "").strip()
-    except Exception:
-        token="";status="";received_hash=""
-    if not token:
-        return JSONResponse({"ok":False,"error":"Missing payment token"},status_code=400)
-    expected=hashlib.sha512(PAYDUNYA_MASTER_KEY.encode()).hexdigest() if PAYDUNYA_MASTER_KEY else ""
-    if received_hash and not hmac.compare_digest(received_hash,expected):
-        return JSONResponse({"ok":False,"error":"Invalid callback signature"},status_code=403)
-    confirmed=await _confirm_vip_payment(token)
-    confirmed_invoice=(confirmed or {}).get("invoice") or {}
-    confirmed_status=str(confirmed_invoice.get("status") or status or "PENDING").upper()
-    return {"ok":True,"token":token,"status":confirmed_status,"paid":confirmed_status=="COMPLETED"}
-
-@app.get("/api/vip/access")
-async def vip_access(request:Request):
-    token=request.cookies.get("john_vip")
-    if not _vip_cookie_valid(token):
-        return {"entitled":False}
-    try:
-        raw=base64.urlsafe_b64decode(token.encode()).decode()
-        _,invoice,_=raw.split(".",2)
-    except Exception:
-        return {"entitled":False}
-    data=await _confirm_vip_payment(invoice)
-    status=str(((data or {}).get("invoice") or {}).get("status") or "").upper()
-    if status!="COMPLETED":
-        return {"entitled":False,"status":status or "UNKNOWN"}
-    return {"entitled":True,"status":"COMPLETED","expires_in":VIP_ACCESS_TTL}
 
 @app.get("/api/predict/{fixture_id}")
 async def predict_fixture(fixture_id:int):
