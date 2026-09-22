@@ -392,14 +392,14 @@ document.getElementById("selectedTab").addEventListener("click",function(){showV
 document.getElementById("vipTab").addEventListener("click",function(){showView("vip");});
 var vipInputs=Array.prototype.slice.call(document.querySelectorAll(".vip-code-input"));
 vipInputs.forEach(function(inp,i){
-  inp.addEventListener("input",function(){inp.value=inp.value.replace(/\D/g,"").slice(0,1);if(inp.value&&vipInputs[i+1])vipInputs[i+1].focus();});
+  inp.addEventListener("input",function(){inp.value=inp.value.replace(/[^A-Za-z0-9]/g,"").slice(0,1);if(inp.value&&vipInputs[i+1])vipInputs[i+1].focus();});
   inp.addEventListener("keydown",function(e){if(e.key==="Backspace"&&!inp.value&&vipInputs[i-1])vipInputs[i-1].focus();if(e.key==="Enter")document.getElementById("vipCodeSubmit").click();});
-  inp.addEventListener("paste",function(e){e.preventDefault();var v=(e.clipboardData||window.clipboardData).getData("text").replace(/\D/g,"").slice(0,6);v.split("").forEach(function(ch,j){if(vipInputs[j])vipInputs[j].value=ch;});});
+  inp.addEventListener("paste",function(e){e.preventDefault();var v=(e.clipboardData||window.clipboardData).getData("text").replace(/[^A-Za-z0-9]/g,"").slice(0,6);v.split("").forEach(function(ch,j){if(vipInputs[j])vipInputs[j].value=ch;});});
 });
 document.getElementById("vipCodeSubmit").addEventListener("click",async function(){
   var err=document.getElementById("vipCodeError"),btn=document.getElementById("vipCodeSubmit"),code=vipInputs.map(function(x){return x.value;}).join("");
   err.textContent="";
-  if(code.length!==6){err.textContent="Please enter all 6 digits.";return;}
+  if(code.length!==6){err.textContent="Please enter all 6 characters.";return;}
   btn.disabled=true;btn.textContent="Checking…";
   try{
     var r=await fetch("/api/vip/access",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code})});
@@ -428,7 +428,7 @@ async function bootAccess(){
   try{var s=await fetch("/api/access/status").then(function(r){return r.json();});if(s.authenticated){setOpen();return;}}catch(e){}
   inputs.forEach(function(inp,i){
     inp.addEventListener("input",function(){
-      inp.value=inp.value.replace(/\D/g,"").slice(0,1);
+      inp.value=inp.value.replace(/[^A-Za-z0-9]/g,"").slice(0,1);
       if(inp.value&&inputs[i+1])inputs[i+1].focus();
     });
     inp.addEventListener("keydown",function(e){if(e.key==="Backspace"&&!inp.value&&inputs[i-1])inputs[i-1].focus();if(e.key==="Enter")submit.click();});
