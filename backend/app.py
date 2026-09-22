@@ -378,6 +378,9 @@ async def match_analysis(match_id:str):
             "disclaimer": "Probabilities are model estimates, not certainties. Use the graph to inspect evidence and uncertainty; do not treat it as a guarantee."
         }
 
+    except Exception as exc:
+        return {"error":"Interactive match analysis unavailable","event_id":match_id,"detail":str(exc)}
+
 @app.get("/api/match/{match_id}/details")
 async def match_details(match_id:str):
     if match_id.startswith("espn-"):
