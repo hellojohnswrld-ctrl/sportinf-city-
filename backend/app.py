@@ -72,17 +72,97 @@ async def predictions_today():
     return {"source":"TheSportsDB","date":data.get("date"),"count":len(results),"odds_configured":bool(ODDS_API_KEY),"predictions":results}
 @app.get("/api/scan/today")
 async def scan_today():
-    if not ODDS_API_KEY:return {"error":"ODDS_API_KEY is not configured","matches":[]}
-    odds_map,sports=await _odds_map();games=[]
-    for key in list(odds_map):
-        pass
-    # Re-fetch raw all-soccer games so the scanner can include every available bookmaker fixture.
-    try:_,raw=await fetch_all_soccer_odds(ODDS_API_REGION) if ODDS_API_ALL_SOCCER else ([],await fetch_odds())
-    except Exception:return {"error":"Unable to load odds feeds","matches":[]}
-    unique={(_key(g.get("home_team")),_key(g.get("away_team"))):g for g in raw}
-    for g in list(unique.values()):games.append(await _scan_game(g,odds_map))
-    games.sort(key=lambda x:(-(x.get("analysis") or {}).get("score",0),x.get("date") or "",x.get("time") or ""))
-    return {"source":"The Odds API + TheSportsDB","date":"today","sports_scanned":len(sports),"matches":games,"count":len(games),"note":"Scanner aggregates available bookmaker feeds and enriches matches with TheSportsDB form where team matching succeeds. It does not place bets or guarantee outcomes."}
+    # Free-first scanner: TheSportsDB supplies the day's football fixtures.
+    # Odds are optional enrichment; a missing odds feed must never prevent analysis.
+    try:
+        data = await football.todays_fixtures()
+    except Exception as exc:
+        return {"error":"Unable to load today's football fixtures","matches":[],"detail":str(exc)}
+
+    events = data.get("events") or []
+    odds_map = {}
+    odds_status = "not_configured"
+    if ODDS_API_KEY:
+        try:
+            odds_map, _ = await _odds_map()
+            odds_status = "available"
+        except Exception:
+            odds_status = "unavailable"
+
+    # The free TheSportsDB V1 tier is rate-limited. Enrich a bounded set of
+    # unique teams with recent form, while still producing a prediction for
+    # every fixture using a neutral baseline when form is unavailable.
+    unique_teams = []
+    seen = set()
+    for e in events:
+        for side in ("idHomeTeam","idAwayTeam"):
+            tid = e.get(side)
+            if tid and str(tid) not in seen:
+                seen.add(str(tid))
+                unique_teams.append(int(tid))
+
+    form_cache = {}
+    sem = asyncio.Semaphore(6)
+    async def load_form(tid):
+        async with sem:
+            try:
+                d = await football.team_last_results(tid, 10)
+                return tid, _form_stats(d.get("events", []), tid)
+            except Exception:
+                return tid, {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
+
+    # 24 team lookups = 12 matches of detailed recent-form enrichment.
+    # All remaining fixtures still receive a model result, explicitly marked
+    # as low-data rather than silently pretending recent form was available.
+    for i in range(0, min(len(unique_teams), 24), 6):
+        batch = unique_teams[i:i+6]
+        for tid, stats in await asyncio.gather(*(load_form(x) for x in batch)):
+            form_cache[tid] = stats
+
+    matches = []
+    for e in events:
+        hi, ai = e.get("idHomeTeam"), e.get("idAwayTeam")
+        hf = form_cache.get(int(hi), {"played":0,"ppg":1.0,"avg_goal_difference":0.0}) if hi else {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
+        af = form_cache.get(int(ai), {"played":0,"ppg":1.0,"avg_goal_difference":0.0}) if ai else {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
+        pred = baseline(hf["ppg"], af["ppg"], hf["avg_goal_difference"], af["avg_goal_difference"])
+        odds = odds_map.get((_key(e.get("strHomeTeam")),_key(e.get("strAwayTeam")))) if odds_map else None
+        val = value_layer(pred, odds)
+        detailed = hf["played"] > 0 and af["played"] > 0
+        analysis = analysis_layer(pred, val)
+        if not detailed:
+            analysis = {
+                **analysis,
+                "signal": "LOW_DATA" if not val else analysis.get("signal","LOW_DATA"),
+                "reasons": ["Recent-form enrichment was unavailable within the free data-source rate limits.", *analysis.get("reasons", [])]
+            }
+        matches.append({
+            "fixture_id": e.get("idEvent"),
+            "home_team": e.get("strHomeTeam"),
+            "away_team": e.get("strAwayTeam"),
+            "date": e.get("dateEvent"),
+            "time": e.get("strTime"),
+            "league": e.get("strLeague"),
+            "venue": e.get("strVenue"),
+            "home_form": hf,
+            "away_form": af,
+            "prediction": pred,
+            "odds": odds,
+            "value": val,
+            "analysis": analysis,
+            "data_quality": "detailed" if detailed else "fixture_only",
+            "model_note": "Prediction from recent form, goal difference and home advantage when form data is available; otherwise neutral baseline. Not a guarantee."
+        })
+
+    matches.sort(key=lambda x: (-(x.get("analysis") or {}).get("score",0), x.get("time") or "", x.get("home_team") or ""))
+    return {
+        "source":"TheSportsDB",
+        "date":data.get("date"),
+        "count":len(matches),
+        "odds_status":odds_status,
+        "matches":matches,
+        "coverage_note":"Every football fixture returned by the free TheSportsDB day schedule is included. Recent-form enrichment is rate-limited on the free tier, so some matches may have lower data quality."
+    }
+
 @app.get("/api/fixture/{fixture_id}")
 async def get_fixture(fixture_id:int):return await football.fixture(fixture_id)
 @app.get("/docs-info")
