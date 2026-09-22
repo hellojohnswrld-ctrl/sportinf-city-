@@ -11,7 +11,44 @@ def today_utc():return datetime.now(timezone.utc).date().isoformat()
 async def todays_fixtures():
     d=today_utc();data=await api_get("eventsday.php",{"d":d,"s":"Soccer"});return {"source":"TheSportsDB","date":d,"events":data.get("events") or []}
 async def live_fixtures():
-    d=today_utc();data=await api_get("eventsday.php",{"d":d,"s":"Soccer"});return {"source":"TheSportsDB","live_available":False,"message":"Free TheSportsDB V1 does not expose live scores; showing today's football events.","date":d,"events":data.get("events") or []}
+    """Return currently live soccer matches from the broad ESPN scoreboard."""
+    d=today_utc()
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r=await c.get(f"{ESPN_BASE}/all/scoreboard",params={"dates":d})
+            r.raise_for_status()
+            data=r.json()
+    except Exception:
+        return {"source":"ESPN","live_available":False,"date":d,"events":[]}
+    out=[]
+    for ev in data.get("events") or []:
+        comp=(ev.get("competitions") or [{}])[0]
+        status=((comp.get("status") or {}).get("type") or {})
+        if status.get("completed") is True:
+            continue
+        state=(status.get("state") or "").lower()
+        # ESPN uses in/post/pre states. Only expose genuinely in-progress events.
+        if state not in ("in","live"):
+            continue
+        teams=comp.get("competitors") or []
+        home=next((x for x in teams if x.get("homeAway")=="home"),None)
+        away=next((x for x in teams if x.get("homeAway")=="away"),None)
+        if not home or not away:
+            continue
+        ht=home.get("team") or {}; at=away.get("team") or {}
+        out.append({
+            "event_id":"espn-"+str(ev.get("id")),
+            "home_team":ht.get("displayName") or "",
+            "away_team":at.get("displayName") or "",
+            "home_score":home.get("score"),
+            "away_score":away.get("score"),
+            "home_logo":ht.get("logo") or "",
+            "away_logo":at.get("logo") or "",
+            "minute":status.get("shortDetail") or status.get("detail") or "",
+            "status":status.get("description") or status.get("detail") or "LIVE",
+            "competition":((comp.get("league") or {}).get("name") or "Football")
+        })
+    return {"source":"ESPN soccer/all","live_available":True,"date":d,"count":len(out),"events":out}
 async def fixture(fixture_id:int):
     data=await api_get("lookupevent.php",{"id":fixture_id});return {"source":"TheSportsDB","events":data.get("events") or []}
 async def search_team(name):
