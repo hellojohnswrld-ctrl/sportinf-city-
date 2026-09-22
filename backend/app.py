@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi import Request
-import os,hmac,hashlib,base64,time
-from backend.config import APP_NAME,APP_VERSION,THESPORTSDB_KEY,ODDS_API_KEY,ODDS_API_REGION,ODDS_API_SPORT,ODDS_API_ALL_SOCCER
+import os,hmac,hashlib,base64,time,httpx,datetime
+from backend.config import APP_NAME,APP_VERSION,THESPORTSDB_KEY,ODDS_API_KEY,ODDS_API_REGION,ODDS_API_SPORT,ODDS_API_ALL_SOCCER,PAYDUNYA_MASTER_KEY,PAYDUNYA_PRIVATE_KEY,PAYDUNYA_TOKEN,VIP_PRICE_XOF,VIP_MERCHANT_NAME
 from backend.data_engine import football
 from backend.data_engine.odds import fetch_odds,fetch_all_soccer_odds,match_odds,value_layer,analysis_layer
 from backend.prediction_engine.football_model import baseline
@@ -178,6 +178,67 @@ async def search_matches(q: str = "", category: str = "all"):
     categories={}
     for x in matches: categories[x["competition_category"]]=categories.get(x["competition_category"],0)+1
     return {"source":"ESPN soccer/all + TheSportsDB","date":data.get("date"),"count":len(matches),"categories":categories,"matches":matches}
+
+
+@app.get("/api/vip")
+async def vip_forecast():
+    """Return 15 upcoming matches with the strongest model probabilities."""
+    today=datetime.date.today()
+    events=[]
+    for i in range(0,8):
+        try:
+            x=await football.espn_fixtures((today+datetime.timedelta(days=i)).isoformat())
+            events.extend(x.get("events") or [])
+        except Exception:
+            pass
+    unique={}
+    for e in events:
+        if (e.get("strStatus") or "").lower() in ("final","completed"):
+            continue
+        k=(_key(e.get("strHomeTeam")),_key(e.get("strAwayTeam")),e.get("dateEvent"))
+        if k[0] and k[1]: unique[k]=e
+    try:
+        recent=await football.espn_recent_results(today.isoformat(),45)
+        espn_form=_name_form_stats(recent.get("events") or [])
+    except Exception:
+        espn_form={}
+    rows=[]
+    for e in unique.values():
+        neutral={"played":0,"ppg":1.0,"avg_goal_difference":0.0,"avg_goals_for":1.4,"avg_goals_against":1.4}
+        hf=espn_form.get(_key(e.get("strHomeTeam")),neutral)
+        af=espn_form.get(_key(e.get("strAwayTeam")),neutral)
+        pred=baseline(hf["ppg"],af["ppg"],hf["avg_goal_difference"],af["avg_goal_difference"])
+        probs={"HOME":float(pred.get("home_probability",0)),"DRAW":float(pred.get("draw_probability",0)),"AWAY":float(pred.get("away_probability",0))}
+        top=max(probs,key=probs.get)
+        rows.append({"fixture_id":e.get("idEvent"),"home_team":e.get("strHomeTeam"),"away_team":e.get("strAwayTeam"),"competition":e.get("strLeague"),"date":e.get("dateEvent"),"time":e.get("strTime"),"venue":e.get("strVenue"),"home_logo":e.get("strHomeTeamBadge") or "","away_logo":e.get("strAwayTeamBadge") or "","prediction":pred,"selection":top,"selection_probability":probs[top],"data_quality":"standard ESPN recent-form sample"})
+    rows.sort(key=lambda x:x["selection_probability"],reverse=True)
+    return {"title":"JOHN FORCAST VIP","count":min(15,len(rows)),"matches":rows[:15],"disclaimer":"These are the 15 highest model-probability upcoming matches available to the scanner. Probabilities are estimates, not guarantees."}
+
+@app.post("/api/vip/payment")
+async def vip_payment(request:Request):
+    if not all((PAYDUNYA_MASTER_KEY,PAYDUNYA_PRIVATE_KEY,PAYDUNYA_TOKEN)):
+        return JSONResponse({"error":"VIP payments are not configured yet. Add the PayDunya production keys in Render environment variables."},status_code=503)
+    if VIP_PRICE_XOF<=0:
+        return JSONResponse({"error":"VIP_PRICE_XOF is not configured yet."},status_code=503)
+    try:
+        data=await request.json()
+    except Exception:
+        data={}
+    email=str(data.get("email") or "").strip()
+    phone=str(data.get("phone") or "").strip()
+    provider=str(data.get("provider") or "mobile_money").strip()
+    if not email:
+        return JSONResponse({"error":"Email is required for the payment receipt."},status_code=400)
+    payload={"invoice":{"total_amount":VIP_PRICE_XOF,"description":"JOHN FORCAST VIP — 15-match premium forecast"},"store":{"name":VIP_MERCHANT_NAME},"customer":{"name":"VIP Customer","email":email,"phone":phone}}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r=await client.post("https://app.paydunya.com/api/v1/checkout-invoice/create",json=payload,headers={"PAYDUNYA-MASTER-KEY":PAYDUNYA_MASTER_KEY,"PAYDUNYA-PRIVATE-KEY":PAYDUNYA_PRIVATE_KEY,"PAYDUNYA-TOKEN":PAYDUNYA_TOKEN})
+            data=r.json()
+        if data.get("response_code")!="00":
+            return JSONResponse({"error":data.get("response_text") or "Payment invoice creation failed."},status_code=502)
+        return {"ok":True,"payment_url":data.get("response_text"),"token":data.get("token"),"provider":provider,"amount":VIP_PRICE_XOF,"currency":"XOF"}
+    except Exception:
+        return JSONResponse({"error":"Payment provider is temporarily unavailable."},status_code=502)
 
 @app.get("/api/predict/{fixture_id}")
 async def predict_fixture(fixture_id:int):
