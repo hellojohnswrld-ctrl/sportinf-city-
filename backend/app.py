@@ -187,7 +187,7 @@ async def _predict_event(event,odds_map=None):
     if not hi or not ai:return None
     hd,ad=await asyncio.gather(football.team_last_results(int(hi),10),football.team_last_results(int(ai),10))
     hf,af=_form_stats(hd.get("events",[]),hi),_form_stats(ad.get("events",[]),ai)
-    pred=baseline(hf["ppg"],af["ppg"],hf["avg_goal_difference"],af["avg_goal_difference"])
+    pred=baseline(hf["ppg"],af["ppg"],hf["avg_goal_difference"],af["avg_goal_difference"],\n                  home_gf=hf["avg_goals_for"],home_ga=hf["avg_goals_against"],\n                  away_gf=af["avg_goals_for"],away_ga=af["avg_goals_against"],\n                  sample_home=hf["played"],sample_away=af["played"])
     odds=odds_map.get((_key(event.get("strHomeTeam")),_key(event.get("strAwayTeam")))) if odds_map else None
     val=value_layer(pred,odds)
     out={"fixture_id":event.get("idEvent"),"home_team":event.get("strHomeTeam"),"away_team":event.get("strAwayTeam"),"home_logo":event.get("strHomeTeamBadge") or event.get("home_logo") or "","away_logo":event.get("strAwayTeamBadge") or event.get("away_logo") or "","date":event.get("dateEvent"),"time":event.get("strTime"),"league":event.get("strLeague"),"venue":event.get("strVenue"),"home_form":hf,"away_form":af,"prediction":pred,"odds":odds,"value":val,"analysis":analysis_layer(pred,val),"model_note":"Baseline model using recent form, goal difference and home advantage. Not a guarantee."}
@@ -267,7 +267,7 @@ async def vip_forecast(request:Request):
         neutral={"played":0,"ppg":1.0,"avg_goal_difference":0.0,"avg_goals_for":1.4,"avg_goals_against":1.4}
         hf=espn_form.get(_key(e.get("strHomeTeam")),neutral)
         af=espn_form.get(_key(e.get("strAwayTeam")),neutral)
-        pred=baseline(hf["ppg"],af["ppg"],hf["avg_goal_difference"],af["avg_goal_difference"])
+        pred=baseline(hf["ppg"],af["ppg"],hf["avg_goal_difference"],af["avg_goal_difference"],\n                  home_gf=hf["avg_goals_for"],home_ga=hf["avg_goals_against"],\n                  away_gf=af["avg_goals_for"],away_ga=af["avg_goals_against"],\n                  sample_home=hf["played"],sample_away=af["played"])
         probs={"HOME":float(pred.get("home_probability",0)),"DRAW":float(pred.get("draw_probability",0)),"AWAY":float(pred.get("away_probability",0))}
         top=max(probs,key=probs.get)
         rows.append({"fixture_id":e.get("idEvent"),"home_team":e.get("strHomeTeam"),"away_team":e.get("strAwayTeam"),"competition":e.get("strLeague"),"date":e.get("dateEvent"),"time":e.get("strTime"),"venue":e.get("strVenue"),"home_logo":e.get("strHomeTeamBadge") or "","away_logo":e.get("strAwayTeamBadge") or "","prediction":pred,"selection":top,"selection_probability":probs[top],"data_quality":"standard ESPN recent-form sample"})
