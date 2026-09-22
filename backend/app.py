@@ -109,7 +109,9 @@ async def scan_today():
     for e in events:
         for side in ("idHomeTeam","idAwayTeam"):
             tid = e.get(side)
-            if tid and str(tid) not in seen:
+            # Only numeric TheSportsDB IDs can use the free form-history endpoint.
+            # ESPN IDs remain fixture-only so they are never sent to TheSportsDB.
+            if tid and str(tid).isdigit() and str(tid) not in seen:
                 seen.add(str(tid))
                 unique_teams.append(int(tid))
 
@@ -134,8 +136,8 @@ async def scan_today():
     matches = []
     for e in events:
         hi, ai = e.get("idHomeTeam"), e.get("idAwayTeam")
-        hf = form_cache.get(int(hi), {"played":0,"ppg":1.0,"avg_goal_difference":0.0}) if hi else {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
-        af = form_cache.get(int(ai), {"played":0,"ppg":1.0,"avg_goal_difference":0.0}) if ai else {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
+        hf = form_cache.get(int(hi), {"played":0,"ppg":1.0,"avg_goal_difference":0.0}) if hi and str(hi).isdigit() else {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
+        af = form_cache.get(int(ai), {"played":0,"ppg":1.0,"avg_goal_difference":0.0}) if ai and str(ai).isdigit() else {"played":0,"ppg":1.0,"avg_goal_difference":0.0}
         pred = baseline(hf["ppg"], af["ppg"], hf["avg_goal_difference"], af["avg_goal_difference"])
         odds = odds_map.get((_key(e.get("strHomeTeam")),_key(e.get("strAwayTeam")))) if odds_map else None
         val = value_layer(pred, odds)
@@ -167,12 +169,12 @@ async def scan_today():
 
     matches.sort(key=lambda x: (-(x.get("analysis") or {}).get("score",0), x.get("time") or "", x.get("home_team") or ""))
     return {
-        "source":"TheSportsDB + ESPN",
+        "source":"ESPN soccer/all + TheSportsDB",
         "date":data.get("date"),
         "count":len(matches),
         "odds_status":odds_status,
         "matches":matches,
-        "coverage_note":"Fixtures are aggregated from free TheSportsDB and ESPN feeds. TheSportsDB free schedule responses can be limited, so ESPN is used to broaden coverage. Recent-form enrichment is rate-limited on free sources, so some matches may have lower data quality."
+        "coverage_note":"Fixtures are aggregated from TheSportsDB plus ESPN's soccer-wide scoreboard. ESPN supplies broad fixture coverage; TheSportsDB supplies recent-form enrichment where numeric team IDs are available. Matches without recent-form data are still shown and explicitly marked low-data."
     }
 
 @app.get("/api/fixture/{fixture_id}")
