@@ -330,7 +330,9 @@ async def vip_payment_status(request:Request, token:str=""):
 async def vip_payment_callback(request:Request):
     """PayDunya IPN endpoint. It confirms the token server-side before recording success."""
     try:
-        raw=await request.body()\n        from urllib.parse import parse_qs\n        form={k:v[0] for k,v in parse_qs(raw.decode("utf-8")).items()}
+        raw=await request.body()
+        from urllib.parse import parse_qs
+        form={k:v[0] for k,v in parse_qs(raw.decode("utf-8")).items()}
         token=str(form.get("token") or "").strip()
         status=str(form.get("status") or "").lower()
         received_hash=str(form.get("hash") or "").strip()
