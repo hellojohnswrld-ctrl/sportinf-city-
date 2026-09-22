@@ -414,16 +414,22 @@ async def match_analysis(match_id:str):
         hf.get("played",0), af.get("played",0), None
     )
 
+    league_obj = comp.get("league") if isinstance(comp.get("league"), dict) else {}
+    season_obj = header.get("season") if isinstance(header.get("season"), dict) else {}
+    status_obj = comp.get("status") if isinstance(comp.get("status"), dict) else {}
+    status_type = status_obj.get("type") if isinstance(status_obj.get("type"), dict) else {}
+    venue_obj = comp.get("venue") if isinstance(comp.get("venue"), dict) else {}
+    season_value = header.get("season") if not isinstance(header.get("season"), dict) else ""
     return {
         "source": source,
         "event_id": match_id,
         "home_team": home_name,
         "away_team": away_name,
-        "competition": ((comp.get("league") or {}).get("name") or "Football"),
-        "season": ((header.get("season") or {}).get("displayName") or (header.get("season") or {}).get("year") or header.get("season") or ""),
+        "competition": league_obj.get("name") or "Football",
+        "season": season_obj.get("displayName") or season_obj.get("year") or season_value or "",
         "week": ((header.get("week") or {}).get("number") if isinstance(header.get("week"),dict) else header.get("week")),
-        "status": ((comp.get("status") or {}).get("type") or {}).get("description") or "Scheduled",
-        "venue": ((comp.get("venue") or {}).get("fullName") or ""),
+        "status": status_type.get("description") or "Scheduled",
+        "venue": venue_obj.get("fullName") or "",
         "history": {"home": history_home, "away": history_away},
         "form": {"home": hf, "away": af},
         "prediction": pred,
