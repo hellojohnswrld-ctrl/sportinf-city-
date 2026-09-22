@@ -72,7 +72,7 @@ async def predictions_today():
     return {"source":"TheSportsDB","date":data.get("date"),"count":len(results),"odds_configured":bool(ODDS_API_KEY),"predictions":results}
 @app.get("/api/scan/today")
 async def scan_today():
-    # Free-first scanner: TheSportsDB supplies the day's football fixtures.
+    # Free-first scanner: aggregate TheSportsDB + ESPN before analysis.
     # Odds are optional enrichment; a missing odds feed must never prevent analysis.
     try:
         data = await football.todays_fixtures()
@@ -80,6 +80,18 @@ async def scan_today():
         return {"error":"Unable to load today's football fixtures","matches":[],"detail":str(exc)}
 
     events = data.get("events") or []
+    # TheSportsDB free tier can return a very small schedule slice. ESPN adds
+    # broad free fixture coverage across many domestic and UEFA competitions.
+    try:
+        espn = await football.espn_fixtures(data.get("date"))
+        events.extend(espn.get("events") or [])
+    except Exception:
+        pass
+    unique_events = {}
+    for e in events:
+        k = (_key(e.get("strHomeTeam")), _key(e.get("strAwayTeam")), e.get("dateEvent"))
+        if k[0] and k[1]: unique_events[k] = e
+    events = list(unique_events.values())
     odds_map = {}
     odds_status = "not_configured"
     if ODDS_API_KEY:
@@ -155,12 +167,12 @@ async def scan_today():
 
     matches.sort(key=lambda x: (-(x.get("analysis") or {}).get("score",0), x.get("time") or "", x.get("home_team") or ""))
     return {
-        "source":"TheSportsDB",
+        "source":"TheSportsDB + ESPN",
         "date":data.get("date"),
         "count":len(matches),
         "odds_status":odds_status,
         "matches":matches,
-        "coverage_note":"Every football fixture returned by the free TheSportsDB day schedule is included. Recent-form enrichment is rate-limited on the free tier, so some matches may have lower data quality."
+        "coverage_note":"Fixtures are aggregated from free TheSportsDB and ESPN feeds. TheSportsDB free schedule responses can be limited, so ESPN is used to broaden coverage. Recent-form enrichment is rate-limited on free sources, so some matches may have lower data quality."
     }
 
 @app.get("/api/fixture/{fixture_id}")
