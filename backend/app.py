@@ -307,14 +307,17 @@ async def match_analysis(match_id:str):
     if match_id.startswith("espn-"):
         try:
             detail = await football.espn_event_details(match_id)
-            header = detail.get("header") or {}
-            comp = (header.get("competitions") or [{}])[0]
-            competitors = comp.get("competitors") or []
-            home = next((x for x in competitors if x.get("homeAway") == "home"), None)
-            away = next((x for x in competitors if x.get("homeAway") == "away"), None)
-            home_name = ((home or {}).get("team") or {}).get("displayName") or ""
-            away_name = ((away or {}).get("team") or {}).get("displayName") or ""
-            event_date = (header.get("date") or "")[:10]
+            header = detail.get("header") if isinstance(detail.get("header"), dict) else {}
+            competitions = header.get("competitions") if isinstance(header.get("competitions"), list) else []
+            comp = competitions[0] if competitions and isinstance(competitions[0], dict) else {}
+            competitors = comp.get("competitors") if isinstance(comp.get("competitors"), list) else []
+            home = next((x for x in competitors if isinstance(x, dict) and x.get("homeAway") == "home"), None)
+            away = next((x for x in competitors if isinstance(x, dict) and x.get("homeAway") == "away"), None)
+            home_team_obj = home.get("team") if isinstance(home, dict) and isinstance(home.get("team"), dict) else {}
+            away_team_obj = away.get("team") if isinstance(away, dict) and isinstance(away.get("team"), dict) else {}
+            home_name = home_team_obj.get("displayName") or ""
+            away_name = away_team_obj.get("displayName") or ""
+            event_date = str(header.get("date") or "")[:10]
         except Exception:
             home_name = away_name = ""
     elif str(match_id).isdigit():
@@ -419,7 +422,8 @@ async def match_analysis(match_id:str):
     status_obj = comp.get("status") if isinstance(comp.get("status"), dict) else {}
     status_type = status_obj.get("type") if isinstance(status_obj.get("type"), dict) else {}
     venue_obj = comp.get("venue") if isinstance(comp.get("venue"), dict) else {}
-    season_value = header.get("season") if not isinstance(header.get("season"), dict) else ""
+    season_raw = header.get("season")
+    season_value = season_raw if isinstance(season_raw, (str, int, float)) else ""
     return {
         "source": source,
         "event_id": match_id,
@@ -445,6 +449,42 @@ async def match_analysis(match_id:str):
         "data_note": "Historical performance is shown when available from ESPN or TheSportsDB. Missing history lowers confidence; it does not block the analysis.",
         "disclaimer": "Probabilities are model estimates, not certainties. Use the graph to inspect evidence and uncertainty; do not treat it as a guarantee."
     }
+
+@app.get("/api/match/{match_id}/result")
+async def match_result(match_id:str):
+    """Return final score/result when the selected match has completed."""
+    if match_id.startswith("espn-"):
+        try:
+            data=await football.espn_event_details(match_id)
+            header=data.get("header") if isinstance(data.get("header"),dict) else {}
+            comps=header.get("competitions") if isinstance(header.get("competitions"),list) else []
+            comp=comps[0] if comps and isinstance(comps[0],dict) else {}
+            competitors=comp.get("competitors") if isinstance(comp.get("competitors"),list) else []
+            home=next((x for x in competitors if isinstance(x,dict) and x.get("homeAway")=="home"),None)
+            away=next((x for x in competitors if isinstance(x,dict) and x.get("homeAway")=="away"),None)
+            def score(x):
+                if not isinstance(x,dict): return None
+                try:return int(float(x.get("score")))
+                except(TypeError,ValueError):return None
+            hs,as_=score(home),score(away)
+            status_obj=comp.get("status") if isinstance(comp.get("status"),dict) else {}
+            status_type=status_obj.get("type") if isinstance(status_obj.get("type"),dict) else {}
+            if hs is None or as_ is None:
+                return {"event_id":match_id,"completed":False,"status":status_type.get("description") or "Not finished"}
+            return {"event_id":match_id,"completed":bool(status_type.get("completed",False)),"status":status_type.get("description") or "Final","home_score":hs,"away_score":as_,"result":"HOME" if hs>as_ else "DRAW" if hs==as_ else "AWAY"}
+        except Exception as exc:
+            return {"event_id":match_id,"completed":False,"error":"Result unavailable","detail":str(exc)}
+    if str(match_id).isdigit():
+        try:
+            data=await football.fixture(int(match_id))
+            e=(data.get("events") or [None])[0]
+            if not e:return {"event_id":match_id,"completed":False,"status":"Not found"}
+            try: hs=int(float(e.get("intHomeScore"))); as_=int(float(e.get("intAwayScore")))
+            except(TypeError,ValueError): return {"event_id":match_id,"completed":False,"status":e.get("strStatus") or "Not finished"}
+            return {"event_id":match_id,"completed":True,"status":e.get("strStatus") or "Final","home_score":hs,"away_score":as_,"result":"HOME" if hs>as_ else "DRAW" if hs==as_ else "AWAY"}
+        except Exception as exc:
+            return {"event_id":match_id,"completed":False,"error":"Result unavailable","detail":str(exc)}
+    return {"event_id":match_id,"completed":False,"error":"Unsupported match id"}
 
 @app.get("/api/match/{match_id}/details")
 async def match_details(match_id:str):
