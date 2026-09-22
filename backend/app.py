@@ -260,6 +260,21 @@ async def scan_today():
         "coverage_note":"Fixtures come from TheSportsDB plus ESPN's soccer-wide scoreboard. Historical form is independently built from ESPN's rolling 45-day results, so ESPN fixtures no longer depend on TheSportsDB team-history limits. TheSportsDB history is retained as an additional source where available."
     }
 
+@app.get("/api/match/{match_id}/details")
+async def match_details(match_id:str):
+    if match_id.startswith("espn-"):
+        try:
+            data=await football.espn_event_details(match_id)
+            header=data.get("header") or {}; comp=(header.get("competitions") or [{}])[0]
+            return {"source":"ESPN","event_id":match_id,"competition":((comp.get("league") or {}).get("name") or ""),"season":((header.get("season") or {}).get("displayName") or (header.get("season") or {}).get("year") or ""),"week":((header.get("week") or {}).get("number") if isinstance(header.get("week"),dict) else header.get("week")),"status":((comp.get("status") or {}).get("type") or {}).get("description"),"venue":((comp.get("venue") or {}).get("fullName") or ""),"notes":[n.get("headline") or n.get("text") for n in (data.get("notes") or []) if isinstance(n,dict)],"standings":data.get("standings") or []}
+        except Exception as exc:
+            return {"error":"Match details unavailable","event_id":match_id,"detail":str(exc)}
+    try:
+        data=await football.fixture(int(match_id))
+        return {"source":"TheSportsDB","event_id":match_id,"events":data.get("events") or []}
+    except Exception as exc:
+        return {"error":"Match details unavailable","event_id":match_id,"detail":str(exc)}
+
 @app.get("/api/fixture/{fixture_id}")
 async def get_fixture(fixture_id:int):return await football.fixture(fixture_id)
 @app.get("/docs-info")
