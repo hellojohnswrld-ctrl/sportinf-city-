@@ -20,7 +20,7 @@ h1{margin:0 0 6px;font-size:clamp(25px,4vw,34px)}.muted,.note{color:#91a0b8}
 .nav-tabs{display:flex;gap:8px;flex-wrap:wrap}.nav-tab{background:#f3f6fa;color:#344054;border:1px solid #dce3ec;min-width:42px;width:42px;height:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:19px}.nav-tab.active{background:#2563eb;color:#fff;border-color:#2563eb}
 .nav-icon{width:20px;height:20px;display:block}
 .brand-name{font-size:18px;letter-spacing:.4px}
-.vip-hero{background:linear-gradient(135deg,#fff7d6,#fff,#eef7ff);border:1px solid #eadca8;border-radius:20px;padding:24px;margin-bottom:18px}.vip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.vip-card{background:#fff;border:1px solid #e7e1c8;border-radius:16px;padding:16px;box-shadow:0 6px 22px rgba(80,70,30,.07)}.vip-rank{font-size:12px;font-weight:900;color:#9a7610}.vip-prob{font-size:28px;font-weight:900;color:#17653a}.vip-contact{background:#fff;border:1px solid #e1e7ef;border-radius:16px;padding:18px;margin:18px 0}.vip-whatsapp{display:inline-flex;align-items:center;gap:8px;background:#16803c;color:#fff;text-decoration:none;border-radius:12px;padding:12px 16px;font-weight:800}.vip-whatsapp:hover{background:#106a31}
+.vip-hero{background:linear-gradient(135deg,#fff7d6,#fff,#eef7ff);border:1px solid #eadca8;border-radius:20px;padding:24px;margin-bottom:18px}.vip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.vip-card{background:#fff;border:1px solid #e7e1c8;border-radius:16px;padding:16px;box-shadow:0 6px 22px rgba(80,70,30,.07)}.vip-rank{font-size:12px;font-weight:900;color:#9a7610}.vip-prob{font-size:28px;font-weight:900;color:#17653a}.vip-contact{background:#fff;border:1px solid #e1e7ef;border-radius:16px;padding:18px;margin:18px 0}.vip-code-box{max-width:560px;background:#fff;border:1px solid #eadca8;border-radius:16px;padding:18px;margin:18px 0}.vip-code-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;max-width:360px;margin:14px 0}.vip-code-input{height:54px;border:1px solid #d5dfd8;border-radius:11px;text-align:center;font-size:23px;font-weight:800;min-width:0}.vip-code-input:focus{outline:none;border-color:#16803c;box-shadow:0 0 0 4px rgba(22,128,60,.1)}.vip-whatsapp{display:inline-flex;align-items:center;gap:8px;background:#16803c;color:#fff;text-decoration:none;border-radius:12px;padding:12px 16px;font-weight:800}.vip-whatsapp:hover{background:#106a31}
 .access-gate{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(247,251,248,.94);backdrop-filter:blur(12px)}
 .access-card{width:min(470px,100%);background:rgba(255,255,255,.97);border:1px solid #dfe9e2;border-radius:28px;padding:34px;box-shadow:0 25px 80px rgba(30,70,45,.16);text-align:center}
 .access-ball{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;margin:0 auto 18px;background:linear-gradient(135deg,#16803c,#43b56a);color:white;font-size:34px;box-shadow:0 12px 28px rgba(22,128,60,.22)}
@@ -118,8 +118,22 @@ button.secondary,.close{background:#eef2f7;color:#344054;border:1px solid #d9e0e
 </div>
 <div id="vipView" class="view">
 <section class="vip-hero"><div class="hero"><div><h1>♛ JOHN FORCAST VIP</h1><div class="muted">Premium 15-match model shortlist · upcoming football · probability-led analysis</div></div></div>
-<div class="vip-contact"><b>VIP access</b><p class="note">For VIP questions, private access or the daily shortlist, contact John directly on WhatsApp. No payment is collected inside this app.</p><a class="vip-whatsapp" href="https://wa.me/22899970699" target="_blank" rel="noopener">💬 Contact John on WhatsApp</a></div>
-<div id="vipContent" class="vip-grid"><div class="empty">Building the premium 15-match shortlist…</div></div>
+<div id="vipGate" class="vip-code-box">
+<b>24-hour VIP access</b>
+<p class="note">Enter the current 6-digit VIP code from John. VIP access expires automatically after 24 hours.</p>
+<div class="vip-code-grid" id="vipCodeGrid" aria-label="VIP access code">
+<input class="vip-code-input" maxlength="1" inputmode="numeric">
+<input class="vip-code-input" maxlength="1" inputmode="numeric">
+<input class="vip-code-input" maxlength="1" inputmode="numeric">
+<input class="vip-code-input" maxlength="1" inputmode="numeric">
+<input class="vip-code-input" maxlength="1" inputmode="numeric">
+<input class="vip-code-input" maxlength="1" inputmode="numeric">
+</div>
+<div id="vipCodeError" class="access-error"></div>
+<button id="vipCodeSubmit">Unlock VIP for 24 hours</button>
+<div class="vip-contact"><b>Need a new code?</b><p class="note">Message John on WhatsApp and request a fresh 24-hour VIP code.</p><a class="vip-whatsapp" href="https://wa.me/22899970699?text=Hello%20John%2C%20I%20want%20a%20new%2024-hour%20VIP%20code.%20Please%20send%20me%20the%20current%20code." target="_blank" rel="noopener">💬 Request a new VIP code</a></div>
+</div>
+<div id="vipContent" class="vip-grid" style="display:none"></div>
 </section></div>
 <div id="selectedView" class="view">
 <section class="selected-hero">
@@ -320,9 +334,15 @@ function bindAnalysisButtons(){
   });
 }
 async function loadVip(){
-  var c=document.getElementById("vipContent");c.innerHTML='<div class="empty">Building the premium 15-match shortlist…</div>';
-  try{var d=await getJson("/api/vip");c.innerHTML=d.matches&&d.matches.length?d.matches.map(function(x,i){var p=x.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),sp=pct(x.selection_probability);var label=x.selection==="HOME"?x.home_team:x.selection==="AWAY"?x.away_team:"Draw";return '<article class="vip-card"><div class="vip-rank">VIP PICK #'+(i+1)+' · '+esc(x.competition||"Football")+'</div><div class="logo-pair">'+logo(x.home_logo,x.home_team)+logo(x.away_logo,x.away_team)+'</div><div class="teams team-names">'+esc(x.home_team)+'<br>vs<br>'+esc(x.away_team)+'</div><div class="meta" style="margin:8px 0">'+esc(x.date||"")+' · '+esc((x.time||"").slice(0,5))+'</div><div class="vip-prob">'+sp+'% model probability</div><div class="signal"><b>Model outcome: '+esc(label)+'</b></div><div class="probs"><div class="prob">H<b>'+hp+'%</b></div><div class="prob">D<b>'+dp+'%</b></div><div class="prob">A<b>'+ap+'%</b></div></div></article>';}).join(""):'<div class="empty">No qualifying upcoming matches were available.</div>';
-  }catch(e){c.innerHTML='<div class="empty error">'+esc(e.message)+'</div>';}
+  var gate=document.getElementById("vipGate"),content=document.getElementById("vipContent");
+  try{
+    var s=await getJson("/api/vip/access/status");
+    if(!s.authenticated){gate.style.display="block";content.style.display="none";return;}
+    gate.style.display="none";content.style.display="grid";
+  }catch(e){gate.style.display="block";content.style.display="none";return;}
+  content.innerHTML='<div class="empty">Building the premium 15-match shortlist…</div>';
+  try{var d=await getJson("/api/vip");content.innerHTML=d.matches&&d.matches.length?d.matches.map(function(x,i){var p=x.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),sp=pct(x.selection_probability);var label=x.selection==="HOME"?x.home_team:x.selection==="AWAY"?x.away_team:"Draw";return '<article class="vip-card"><div class="vip-rank">VIP PICK #'+(i+1)+' · '+esc(x.competition||"Football")+'</div><div class="logo-pair">'+logo(x.home_logo,x.home_team)+logo(x.away_logo,x.away_team)+'</div><div class="teams team-names">'+esc(x.home_team)+'<br>vs<br>'+esc(x.away_team)+'</div><div class="meta" style="margin:8px 0">'+esc(x.date||"")+' · '+esc((x.time||"").slice(0,5))+'</div><div class="vip-prob">'+sp+'% model probability</div><div class="signal"><b>Model outcome: '+esc(label)+'</b></div><div class="probs"><div class="prob">H<b>'+hp+'%</b></div><div class="prob">D<b>'+dp+'%</b></div><div class="prob">A<b>'+ap+'%</b></div></div></article>';}).join(""):'<div class="empty">No qualifying upcoming matches were available.</div>';
+  }catch(e){content.innerHTML='<div class="empty error">'+esc(e.message)+'</div>';}
 }
 async function health(){
   try{var d=await getJson("/health");setStatus(d.status==="ok"?"🟢 Online · TheSportsDB · Odds: "+(d.odds_configured?"connected":"not configured"):"🔴 Problem");}
@@ -370,6 +390,25 @@ function showView(name){
 document.getElementById("homeTab").addEventListener("click",function(){showView("home");});
 document.getElementById("selectedTab").addEventListener("click",function(){showView("selected");});
 document.getElementById("vipTab").addEventListener("click",function(){showView("vip");});
+var vipInputs=Array.prototype.slice.call(document.querySelectorAll(".vip-code-input"));
+vipInputs.forEach(function(inp,i){
+  inp.addEventListener("input",function(){inp.value=inp.value.replace(/\D/g,"").slice(0,1);if(inp.value&&vipInputs[i+1])vipInputs[i+1].focus();});
+  inp.addEventListener("keydown",function(e){if(e.key==="Backspace"&&!inp.value&&vipInputs[i-1])vipInputs[i-1].focus();if(e.key==="Enter")document.getElementById("vipCodeSubmit").click();});
+  inp.addEventListener("paste",function(e){e.preventDefault();var v=(e.clipboardData||window.clipboardData).getData("text").replace(/\D/g,"").slice(0,6);v.split("").forEach(function(ch,j){if(vipInputs[j])vipInputs[j].value=ch;});});
+});
+document.getElementById("vipCodeSubmit").addEventListener("click",async function(){
+  var err=document.getElementById("vipCodeError"),btn=document.getElementById("vipCodeSubmit"),code=vipInputs.map(function(x){return x.value;}).join("");
+  err.textContent="";
+  if(code.length!==6){err.textContent="Please enter all 6 digits.";return;}
+  btn.disabled=true;btn.textContent="Checking…";
+  try{
+    var r=await fetch("/api/vip/access",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code})});
+    var d=await r.json();if(!r.ok)throw new Error(d.error||"Invalid VIP code");
+    vipInputs.forEach(function(x){x.value="";});loadVip();
+  }catch(e){err.textContent="That VIP code is invalid or expired.";vipInputs.forEach(function(x){x.value="";});vipInputs[0].focus();}
+  finally{btn.disabled=false;btn.textContent="Unlock VIP for 24 hours";}
+});
+
 document.getElementById("backHomeBtn").addEventListener("click",function(){showView("home");});
 document.getElementById("clearSelectedBtn").addEventListener("click",function(){if(confirm("Remove all selected matches?")){setSavedForecasts([]);renderSavedForecasts();}});
 document.querySelectorAll("[data-filter]").forEach(function(b){b.addEventListener("click",function(){currentSelectedFilter=b.getAttribute("data-filter");document.querySelectorAll("[data-filter]").forEach(function(x){x.classList.toggle("active",x===b);});renderSavedForecasts();});});
