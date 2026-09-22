@@ -12,7 +12,40 @@ import asyncio
 app=FastAPI(title=APP_NAME,version=APP_VERSION)
 ACCESS_CODE=os.getenv("JOHN_ACCESS_CODE","")
 ACCESS_SECRET=os.getenv("JOHN_ACCESS_SECRET","")
-ACCESS_TTL=60*60*24*7
+ACCESS_TTL=60*60*24
+VIP_CODE_SECRET=os.getenv("VIP_CODE_SECRET",ACCESS_SECRET)
+VIP_TTL=60*60*24
+
+def _vip_code(bucket=None):
+    if not VIP_CODE_SECRET:
+        return ""
+    if bucket is None:
+        bucket=int(time.time()//VIP_TTL)
+    digest=hmac.new(VIP_CODE_SECRET.encode(),str(bucket).encode(),hashlib.sha256).digest()
+    return str(int.from_bytes(digest[:4],"big")%1000000).zfill(6)
+
+def _vip_code_valid(code):
+    if not code or not VIP_CODE_SECRET:
+        return False
+    current=int(time.time()//VIP_TTL)
+    return any(hmac.compare_digest(str(code).zfill(6),_vip_code(current+i)) for i in (0,-1))
+
+def _vip_token():
+    payload=str(int(time.time()))
+    sig=hmac.new(VIP_CODE_SECRET.encode(),("vip."+payload).encode(),hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode((payload+"."+sig).encode()).decode()
+
+def _vip_valid(token):
+    if not token or not VIP_CODE_SECRET:
+        return False
+    try:
+        raw=base64.urlsafe_b64decode(token.encode()).decode()
+        ts,sig=raw.split(".",1)
+        if time.time()-int(ts)>VIP_TTL:return False
+        expected=hmac.new(VIP_CODE_SECRET.encode(),("vip."+ts).encode(),hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig,expected)
+    except Exception:
+        return False
 
 def _access_token():
     payload=str(int(time.time()))
@@ -34,7 +67,7 @@ def _access_valid(token):
 @app.middleware("http")
 async def access_gate(request:Request,call_next):
     path=request.url.path
-    if path.startswith("/api/") and path != "/api/access":
+    if path.startswith("/api/") and path not in ("/api/access","/api/vip/access"):
         if not _access_valid(request.cookies.get("john_access")):
             return JSONResponse({"error":"Access key required"},status_code=401)
     return await call_next(request)
@@ -58,6 +91,27 @@ async def access_login(request:Request):
     response=JSONResponse({"authenticated":True})
     response.set_cookie("john_access",_access_token(),httponly=True,secure=True,samesite="lax",max_age=ACCESS_TTL,path="/")
     return response
+
+@app.post("/api/vip/access")
+async def vip_access_login(request:Request):
+    try:
+        data=await request.json()
+        code=str(data.get("code","")).strip()
+    except Exception:
+        code=""
+    if not _vip_code_valid(code):
+        return JSONResponse({"error":"Invalid or expired VIP code"},status_code=401)
+    response=JSONResponse({"authenticated":True,"expires_in":VIP_TTL})
+    response.set_cookie("vip_access",_vip_token(),httponly=True,secure=True,samesite="lax",max_age=VIP_TTL,path="/")
+    return response
+
+@app.get("/api/vip/access/status")
+async def vip_access_status(request:Request):
+    return {"authenticated":_vip_valid(request.cookies.get("vip_access"))}
+
+@app.get("/api/vip/code/current")
+async def vip_current_code():
+    return {"code":_vip_code(),"expires_in":max(0,VIP_TTL-(int(time.time())%VIP_TTL))}
 
 @app.post("/api/access/logout")
 async def access_logout():
@@ -181,7 +235,9 @@ async def search_matches(q: str = "", category: str = "all"):
 
 
 @app.get("/api/vip")
-async def vip_forecast():
+async def vip_forecast(request:Request):
+    if not _vip_valid(request.cookies.get("vip_access")):
+        return JSONResponse({"error":"VIP code required","vip_required":True},status_code=401)
     """Return 15 upcoming matches with the strongest model probabilities."""
     today=datetime.date.today()
     events=[]
