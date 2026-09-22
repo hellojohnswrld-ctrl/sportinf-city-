@@ -14,6 +14,7 @@ ACCESS_CODE=os.getenv("JOHN_ACCESS_CODE","")
 ACCESS_SECRET=os.getenv("JOHN_ACCESS_SECRET","")
 ACCESS_TTL=60*60*24
 VIP_CODE_SECRET=os.getenv("VIP_CODE_SECRET",ACCESS_SECRET)
+VIP_CODES=set(x.strip() for x in os.getenv("VIP_CODES","").split(",") if x.strip())
 VIP_TTL=60*60*24
 
 def _vip_code(bucket=None):
@@ -25,10 +26,13 @@ def _vip_code(bucket=None):
     return str(int.from_bytes(digest[:4],"big")%1000000).zfill(6)
 
 def _vip_code_valid(code):
+    code=str(code or "").strip()
+    if code and any(hmac.compare_digest(code,x) for x in VIP_CODES):
+        return True
     if not code or not VIP_CODE_SECRET:
         return False
     current=int(time.time()//VIP_TTL)
-    return any(hmac.compare_digest(str(code).zfill(6),_vip_code(current+i)) for i in (0,-1))
+    return any(hmac.compare_digest(code,_vip_code(current+i)) for i in (0,-1))
 
 def _vip_token():
     payload=str(int(time.time()))
