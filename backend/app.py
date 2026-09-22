@@ -32,6 +32,18 @@ def _form_stats(events,team_id):
         played+=1;gd+=gf-ga;points+=3 if gf>ga else 1 if gf==ga else 0
     return {"played":int(played),"ppg":round(points/played,3) if played else 1.0,"avg_goal_difference":round(gd/played,3) if played else 0.0,"avg_goals_for":round(sum(_num(e.get("intHomeScore") if str(e.get("idHomeTeam"))==str(team_id) else e.get("intAwayScore")) for e in events if str(e.get("idHomeTeam"))==str(team_id) or str(e.get("idAwayTeam"))==str(team_id))/played,3) if played else 1.4,"avg_goals_against":round(sum(_num(e.get("intAwayScore") if str(e.get("idHomeTeam"))==str(team_id) else e.get("intHomeScore")) for e in events if str(e.get("idHomeTeam"))==str(team_id) or str(e.get("idAwayTeam"))==str(team_id))/played,3) if played else 1.4}
 def _key(v):return "".join(ch.lower() for ch in (v or "") if ch.isalnum())
+def _competition_category(name):
+    n=(name or "").lower()
+    if any(x in n for x in ("friendly","international friendly")): return "Friendly"
+    if any(x in n for x in ("qualifying","qualification","qualifiers")): return "Qualification"
+    if any(x in n for x in ("cup","copa","fa cup","knvb","beker","coupe","trophy","shield","super cup","community shield")): return "Cup"
+    if any(x in n for x in ("world cup","champions league","europa league","conference league","libertadores","sudamericana","champions cup","nations league","african nations","asian cup","gold cup","copa am")): return "International/Tournament"
+    if any(x in n for x in ("women","womens","women's")): return "Women's League"
+    return "League"
+def _decorate_event(e):
+    out=dict(e)
+    out["competition_category"]=_competition_category(out.get("strLeague") or out.get("league"))
+    return out
 def _name_form_stats(events):
     stats={}
     for e in events or []:
@@ -78,6 +90,36 @@ async def _scan_game(game,odds_map):
             return await _predict_event(event,odds_map)
     except Exception:pass
     return {"fixture_id":game.get("id"),"home_team":home,"away_team":away,"date":(game.get("commence_time") or "")[:10],"time":(game.get("commence_time") or "")[11:16],"league":game.get("sport_title"),"odds":odds_map.get((_key(home),_key(away))),"value":None,"analysis":{"signal":"ODDS_ONLY","score":0,"reasons":["Fixture found from bookmaker feeds; recent-form team lookup was unavailable."]}}
+@app.get("/api/search")
+async def search_matches(q: str = "", category: str = "all"):
+    """Search today's broad football feed by teams/competition and filter by competition type."""
+    try:
+        data=await football.todays_fixtures()
+        events=data.get("events") or []
+        try:
+            espn=await football.espn_fixtures(data.get("date"))
+            events.extend(espn.get("events") or [])
+        except Exception:
+            pass
+    except Exception as exc:
+        return {"error":"Unable to load football fixtures","matches":[],"detail":str(exc)}
+    unique={}
+    for e in events:
+        k=(_key(e.get("strHomeTeam")),_key(e.get("strAwayTeam")),e.get("dateEvent"))
+        if k[0] and k[1]: unique[k]=e
+    query=_key(q); wanted=(category or "all").lower()
+    matches=[]
+    for e in unique.values():
+        x=_decorate_event(e); cat=x["competition_category"]
+        hay=_key(" ".join(str(e.get(k) or "") for k in ("strHomeTeam","strAwayTeam","strLeague","strVenue")))
+        if query and query not in hay: continue
+        if wanted!="all" and cat.lower()!=wanted: continue
+        matches.append(x)
+    matches.sort(key=lambda x:(x.get("strLeague") or "",x.get("strTime") or "",x.get("strHomeTeam") or ""))
+    categories={}
+    for x in matches: categories[x["competition_category"]]=categories.get(x["competition_category"],0)+1
+    return {"source":"ESPN soccer/all + TheSportsDB","date":data.get("date"),"count":len(matches),"categories":categories,"matches":matches}
+
 @app.get("/api/predict/{fixture_id}")
 async def predict_fixture(fixture_id:int):
     data=await football.fixture(fixture_id);events=data.get("events") or []
