@@ -294,16 +294,18 @@ def _probability_questions(pred, home_form, away_form, odds=None):
 
 @app.get("/api/match/{match_id}/analysis")
 async def match_analysis(match_id:str):
-    """Build interactive analysis for either an ESPN event id or a TheSportsDB event id."""
-    try:
-        source = "ESPN"
-        header = {}
-        comp = {}
-        event_date = None
-        home_name = ""
-        away_name = ""
+    """Return interactive analysis without requiring an ESPN event id."""
+    source = "ESPN"
+    header = {}
+    comp = {}
+    event_date = None
+    home_name = ""
+    away_name = ""
+    event = None
 
-        if match_id.startswith("espn-"):
+    # Resolve the match first. Never make the analysis UI depend on ESPN.
+    if match_id.startswith("espn-"):
+        try:
             detail = await football.espn_event_details(match_id)
             header = detail.get("header") or {}
             comp = (header.get("competitions") or [{}])[0]
@@ -313,73 +315,130 @@ async def match_analysis(match_id:str):
             home_name = ((home or {}).get("team") or {}).get("displayName") or ""
             away_name = ((away or {}).get("team") or {}).get("displayName") or ""
             event_date = (header.get("date") or "")[:10]
-        elif str(match_id).isdigit():
-            source = "TheSportsDB + ESPN historical results"
+        except Exception:
+            home_name = away_name = ""
+    elif str(match_id).isdigit():
+        source = "TheSportsDB"
+        try:
             data = await football.fixture(int(match_id))
             events = data.get("events") or []
-            if not events:
-                return {"error":"Match not found","event_id":match_id}
-            event = events[0]
+            event = events[0] if events else None
+        except Exception:
+            event = None
+
+        # Fallback: the numeric id came from today's fixture feed, so resolve
+        # it there if the individual lookup is rate-limited or temporarily fails.
+        if not event:
+            try:
+                day = await football.todays_fixtures()
+                event = next((x for x in (day.get("events") or [])
+                              if str(x.get("idEvent")) == str(match_id)), None)
+            except Exception:
+                event = None
+
+        if event:
             home_name = event.get("strHomeTeam") or ""
             away_name = event.get("strAwayTeam") or ""
             event_date = event.get("dateEvent") or ""
-            comp = {"league":{"name":event.get("strLeague") or "Football"}}
+            comp = {"league": {"name": event.get("strLeague") or "Football"}}
             header = {
                 "date": event_date,
                 "season": event.get("strSeason") or "",
                 "week": event.get("intRound") or event.get("strRound") or "",
             }
-        else:
-            return {"error":"Unsupported match id","event_id":match_id}
+    else:
+        return {"error":"Unsupported match id","event_id":match_id}
 
-        if not home_name or not away_name:
-            return {"error":"Could not resolve both teams for this match","event_id":match_id}
+    if not home_name or not away_name:
+        return {"error":"Match teams could not be resolved","event_id":match_id}
 
+    # ESPN is used as a broad historical source, but it is optional. The
+    # modal must still work when ESPN has no coverage for this competition.
+    recent_events = []
+    try:
         recent = await football.espn_recent_results(event_date or None, 45)
-        events = recent.get("events") or []
-        stats = _name_form_stats(events)
-        neutral = {"played":0,"ppg":1.0,"avg_goal_difference":0.0,"avg_goals_for":1.4,"avg_goals_against":1.4}
-        hf = stats.get(_key(home_name), neutral)
-        af = stats.get(_key(away_name), neutral)
-        history_home = _performance_history(events, home_name, 10)
-        history_away = _performance_history(events, away_name, 10)
+        recent_events = recent.get("events") or []
+    except Exception:
+        recent_events = []
 
-        from backend.prediction_engine.football_model import advanced_model
-        pred = advanced_model(
-            hf["ppg"], af["ppg"],
-            hf["avg_goal_difference"], af["avg_goal_difference"],
-            hf.get("avg_goals_for",1.4), hf.get("avg_goals_against",1.4),
-            af.get("avg_goals_for",1.4), af.get("avg_goals_against",1.4),
-            hf.get("played",0), af.get("played",0), None
-        )
+    # If ESPN has no history, use the two teams' TheSportsDB recent results
+    # as a secondary source. Failure here only means less graph data.
+    if not recent_events and event:
+        try:
+            hs, aws = await asyncio.gather(
+                football.search_team(home_name),
+                football.search_team(away_name)
+            )
+            ht = next((x for x in hs if str(x.get("strSport","")).lower()=="soccer"), hs[0] if hs else None)
+            at = next((x for x in aws if str(x.get("strSport","")).lower()=="soccer"), aws[0] if aws else None)
+            if ht and at:
+                hd, ad = await asyncio.gather(
+                    football.team_last_results(int(ht.get("idTeam")), 10),
+                    football.team_last_results(int(at.get("idTeam")), 10)
+                )
+                home_hist = hd.get("events") or []
+                away_hist = ad.get("events") or []
+                recent_events = []
+                for x in home_hist:
+                    recent_events.append({
+                        "date": x.get("dateEvent") or "",
+                        "home_team": x.get("strHomeTeam") or "",
+                        "away_team": x.get("strAwayTeam") or "",
+                        "home_goals": _num(x.get("intHomeScore")),
+                        "away_goals": _num(x.get("intAwayScore"))
+                    })
+                for x in away_hist:
+                    recent_events.append({
+                        "date": x.get("dateEvent") or "",
+                        "home_team": x.get("strHomeTeam") or "",
+                        "away_team": x.get("strAwayTeam") or "",
+                        "home_goals": _num(x.get("intHomeScore")),
+                        "away_goals": _num(x.get("intAwayScore"))
+                    })
+        except Exception:
+            pass
 
-        return {
-            "source": source,
-            "event_id": match_id,
-            "home_team": home_name,
-            "away_team": away_name,
-            "competition": ((comp.get("league") or {}).get("name") or "Football"),
-            "season": ((header.get("season") or {}).get("displayName") or (header.get("season") or {}).get("year") or header.get("season") or ""),
-            "week": ((header.get("week") or {}).get("number") if isinstance(header.get("week"),dict) else header.get("week")),
-            "status": ((comp.get("status") or {}).get("type") or {}).get("description") or "Scheduled",
-            "venue": ((comp.get("venue") or {}).get("fullName") or ""),
-            "history": {"home": history_home, "away": history_away},
-            "form": {"home": hf, "away": af},
-            "prediction": pred,
-            "probability_toolbox": _probability_questions(pred, hf, af),
-            "questions_to_check": [
-                "Is the model based on enough recent matches for both teams?",
-                "Is there a meaningful home/away split that this compact model does not capture?",
-                "Are injuries, suspensions, rotation or confirmed line-ups changing the expected strength?",
-                "Is the bookmaker price materially different from the model probability, and why?",
-                "Could this be a cup/qualification situation where incentives differ from league matches?",
-                "What is the downside if the model is wrong?"
-            ],
-            "disclaimer": "Probabilities are model estimates, not certainties. Use the graph to inspect evidence and uncertainty; do not treat it as a guarantee."
-        }
+    stats = _name_form_stats(recent_events)
+    neutral = {"played":0,"ppg":1.0,"avg_goal_difference":0.0,"avg_goals_for":1.4,"avg_goals_against":1.4}
+    hf = stats.get(_key(home_name), neutral)
+    af = stats.get(_key(away_name), neutral)
+    history_home = _performance_history(recent_events, home_name, 10)
+    history_away = _performance_history(recent_events, away_name, 10)
 
-    except Exception as exc:
-        return {"error":"Interactive match analysis unavailable","event_id":match_id,"detail":str(exc)}
+    from backend.prediction_engine.football_model import advanced_model
+    pred = advanced_model(
+        hf["ppg"], af["ppg"],
+        hf["avg_goal_difference"], af["avg_goal_difference"],
+        hf.get("avg_goals_for",1.4), hf.get("avg_goals_against",1.4),
+        af.get("avg_goals_for",1.4), af.get("avg_goals_against",1.4),
+        hf.get("played",0), af.get("played",0), None
+    )
+
+    return {
+        "source": source,
+        "event_id": match_id,
+        "home_team": home_name,
+        "away_team": away_name,
+        "competition": ((comp.get("league") or {}).get("name") or "Football"),
+        "season": ((header.get("season") or {}).get("displayName") or (header.get("season") or {}).get("year") or header.get("season") or ""),
+        "week": ((header.get("week") or {}).get("number") if isinstance(header.get("week"),dict) else header.get("week")),
+        "status": ((comp.get("status") or {}).get("type") or {}).get("description") or "Scheduled",
+        "venue": ((comp.get("venue") or {}).get("fullName") or ""),
+        "history": {"home": history_home, "away": history_away},
+        "form": {"home": hf, "away": af},
+        "prediction": pred,
+        "probability_toolbox": _probability_questions(pred, hf, af),
+        "questions_to_check": [
+            "Is the model based on enough recent matches for both teams?",
+            "Is there a meaningful home/away split that this compact model does not capture?",
+            "Are injuries, suspensions, rotation or confirmed line-ups changing the expected strength?",
+            "Is the bookmaker price materially different from the model probability, and why?",
+            "Could this be a cup/qualification situation where incentives differ from league matches?",
+            "What is the downside if the model is wrong?"
+        ],
+        "data_note": "Historical performance is shown when available from ESPN or TheSportsDB. Missing history lowers confidence; it does not block the analysis.",
+        "disclaimer": "Probabilities are model estimates, not certainties. Use the graph to inspect evidence and uncertainty; do not treat it as a guarantee."
+    }
 
 @app.get("/api/match/{match_id}/details")
 async def match_details(match_id:str):
