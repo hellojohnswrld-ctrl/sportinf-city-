@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi import Request
+import os,hmac,hashlib,base64,time
 from backend.config import APP_NAME,APP_VERSION,THESPORTSDB_KEY,ODDS_API_KEY,ODDS_API_REGION,ODDS_API_SPORT,ODDS_API_ALL_SOCCER
 from backend.data_engine import football
 from backend.data_engine.odds import fetch_odds,fetch_all_soccer_odds,match_odds,value_layer,analysis_layer
@@ -8,9 +10,61 @@ from backend.prediction_engine.football_model import baseline
 from backend.storage.prediction_store import log_prediction
 import asyncio
 app=FastAPI(title=APP_NAME,version=APP_VERSION)
+ACCESS_CODE=os.getenv("JOHN_ACCESS_CODE","")
+ACCESS_SECRET=os.getenv("JOHN_ACCESS_SECRET","")
+ACCESS_TTL=60*60*24*7
+
+def _access_token():
+    payload=str(int(time.time()))
+    sig=hmac.new(ACCESS_SECRET.encode(),payload.encode(),hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode((payload+"."+sig).encode()).decode()
+
+def _access_valid(token):
+    if not token or not ACCESS_SECRET:
+        return False
+    try:
+        raw=base64.urlsafe_b64decode(token.encode()).decode()
+        ts,sig=raw.split(".",1)
+        if time.time()-int(ts)>ACCESS_TTL:return False
+        expected=hmac.new(ACCESS_SECRET.encode(),ts.encode(),hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig,expected)
+    except Exception:
+        return False
+
+@app.middleware("http")
+async def access_gate(request:Request,call_next):
+    path=request.url.path
+    if path.startswith("/api/") and path!="/api/access":
+        if not _access_valid(request.cookies.get("john_access")):
+            return JSONResponse({"error":"Access key required"},status_code=401)
+    return await call_next(request)
+
 app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
 @app.get("/",include_in_schema=False)
 async def root():return FileResponse("frontend/index.html")
+@app.get("/api/access/status")
+async def access_status(request:Request):
+    return {"authenticated":_access_valid(request.cookies.get("john_access"))}
+
+@app.post("/api/access")
+async def access_login(request:Request):
+    try:
+        data=await request.json()
+        code=str(data.get("code","")).strip()
+    except Exception:
+        code=""
+    if not ACCESS_CODE or not hmac.compare_digest(code,ACCESS_CODE):
+        return JSONResponse({"error":"Invalid access key"},status_code=401)
+    response=JSONResponse({"authenticated":True})
+    response.set_cookie("john_access",_access_token(),httponly=True,secure=True,samesite="lax",max_age=ACCESS_TTL,path="/")
+    return response
+
+@app.post("/api/access/logout")
+async def access_logout():
+    response=JSONResponse({"authenticated":False})
+    response.delete_cookie("john_access",path="/")
+    return response
+
 @app.get("/health")
 async def health():return {"status":"ok","sports_data_provider":"TheSportsDB","thesportsdb_configured":bool(THESPORTSDB_KEY),"odds_provider":"The Odds API","odds_configured":bool(ODDS_API_KEY),"odds_region":ODDS_API_REGION,"all_soccer_scanning":ODDS_API_ALL_SOCCER}
 @app.get("/api/health")
