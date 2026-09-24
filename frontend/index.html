@@ -120,8 +120,8 @@ button.secondary,.close{background:#eef2f7;color:#344054;border:1px solid #d9e0e
 <section class="vip-hero"><div class="hero"><div><h1>♛ JOHN FORCAST VIP</h1><div class="muted">Premium 15-match model shortlist · upcoming football · probability-led analysis</div></div></div>
 <div id="vipGate" class="vip-code-box">
 <b>24-hour VIP access</b>
-<p class="note">Enter the current 6-digit VIP code from John. VIP access expires automatically after 24 hours.</p>
-<div class="vip-code-grid" id="vipCodeGrid" aria-label="VIP access code">
+<p class="note">Enter the current 6-character VIP code from John. Use letters and numbers. VIP access expires automatically after 24 hours.</p>
+<div class="vip-code-grid" id="vipCodeGrid" aria-label="6-character VIP access code">
 <input class="vip-code-input" maxlength="1" inputmode="numeric">
 <input class="vip-code-input" maxlength="1" inputmode="numeric">
 <input class="vip-code-input" maxlength="1" inputmode="numeric">
@@ -414,13 +414,13 @@ vipInputs.forEach(function(inp,i){
 document.getElementById("vipCodeSubmit").addEventListener("click",async function(){
   var err=document.getElementById("vipCodeError"),btn=document.getElementById("vipCodeSubmit"),code=vipInputs.map(function(x){return x.value;}).join("");
   err.textContent="";
-  if(code.length!==6){err.textContent="Please enter all 6 characters.";return;}
+  if(code.length!==6){err.textContent="Please enter all 6 letters/numbers.";return;}
   btn.disabled=true;btn.textContent="Checking…";
   try{
     var r=await fetch("/api/vip/access",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code})});
     var d=await r.json();if(!r.ok)throw new Error(d.error||"Invalid VIP code");
     vipInputs.forEach(function(x){x.value="";});loadVip();
-  }catch(e){err.textContent="That VIP code is invalid or expired.";vipInputs.forEach(function(x){x.value="";});vipInputs[0].focus();}
+  }catch(e){err.textContent="That VIP code is invalid or expired. Check all 6 letters/numbers and try again.";vipInputs.forEach(function(x){x.value="";});vipInputs[0].focus();}
   finally{btn.disabled=false;btn.textContent="Unlock VIP for 24 hours";}
 });
 
