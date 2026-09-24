@@ -231,9 +231,8 @@ function updateSelectedCount(){var n=savedForecasts().length;document.getElement
 function saveCurrentForecast(d){
   var rows=savedForecasts(),id=String(d.event_id);
   rows=rows.filter(function(x){return String(x.event_id)!==id;});
-  rows.unshift({event_id:id,home_team:d.home_team,away_team:d.away_team,competition:d.competition,date:d.date||"",saved_at:new Date().toISOString(),home_logo:d.home_logo||"",away_logo:d.away_logo||"",prediction:d.prediction||{},analysis:d.analysis||{},status:"PENDING"});
-  setSavedForecasts(rows);renderSavedForecasts();updateSelectedCount();
-  showView("selected");
+  rows.unshift({event_id:id,home_team:d.home_team,away_team:d.away_team,competition:d.competition,date:d.date||"",saved_at:new Date().toISOString(),home_logo:d.home_logo||"",away_logo:d.away_logo||"",prediction:d.prediction||{},analysis:d.analysis||{},odds:d.odds||null,value:d.value||null,status:"UPCOMING",lifecycle:"UPCOMING",live:false,verified:false});
+  setSavedForecasts(rows);renderSavedForecasts();updateSelectedCount();showView("selected");
 }
 async function refreshSavedResult(id){
   var rows=savedForecasts(),r=rows.find(function(x){return String(x.event_id)===String(id);});
@@ -241,67 +240,73 @@ async function refreshSavedResult(id){
   try{
     var d=await getJson("/api/match/"+encodeURIComponent(id)+"/result");
     if(!d.completed){
-      r.result_message=d.status||"The match has not finished yet.";
-      setSavedForecasts(rows);renderSavedForecasts();
-      return;
+      if(r.lifecycle!=="LIVE")r.lifecycle="UPCOMING";
+      r.status=r.lifecycle;r.result_message=d.status||"The match has not finished yet.";
+      setSavedForecasts(rows);renderSavedForecasts();return;
     }
-    r.status="FINAL";r.final_score=d.home_score+"-"+d.away_score;r.actual_result=d.result;r.result_message="";
+    r.status="FINISHED";r.lifecycle="FINISHED";r.final_score=d.home_score+"-"+d.away_score;r.actual_result=d.result;r.result_message="";r.verified=true;
     var p=r.prediction||{},probs={HOME:Number(p.home_probability||0),DRAW:Number(p.draw_probability||0),AWAY:Number(p.away_probability||0)};
-    var top=Object.keys(probs).reduce(function(a,b){return probs[b]>probs[a]?b:a;});r.forecast_correct=top===d.result;r.model_probability=probs[top];
+    var top=Object.keys(probs).reduce(function(a,b){return probs[b]>probs[a]?b:a;});
+    r.forecast_correct=top===d.result;r.model_probability=probs[top];
     setSavedForecasts(rows);renderSavedForecasts();
-  }catch(e){
-    r.result_message=e.message||"Unable to load match result. Please try again.";
-    setSavedForecasts(rows);renderSavedForecasts();
-  }
+  }catch(e){r.result_message=e.message||"Unable to load match result. Please try again.";setSavedForecasts(rows);renderSavedForecasts();}
 }
 var currentSelectedFilter="ALL";
 var liveTimer=null;
 function normTeam(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\b(fc|afc|cf|sc|sk|fk)\b/g,"").replace(/[^a-z0-9]/g,"");}
+
 async function refreshSelectedLive(){
-  var rows=savedForecasts(); if(!rows.length)return;
+  var rows=savedForecasts();if(!rows.length)return;
   try{
-    var d=await fetch("/api/live").then(function(r){return r.json();});
-    var live=d.events||[];
+    var d=await fetch("/api/live").then(function(r){return r.json();}),live=d.events||[];
     var changed=false,liveCount=0;
-    rows=rows.map(function(r){
-      var hit=live.find(function(e){
-        var a=normTeam(e.home_team||e.strHomeTeam),b=normTeam(e.away_team||e.strAwayTeam);
-        return a===normTeam(r.home_team) && b===normTeam(r.away_team);
-      });
+    for(var i=0;i<rows.length;i++){
+      var r=rows[i],hit=live.find(function(e){return normTeam(e.home_team||"")===normTeam(r.home_team)&&normTeam(e.away_team||"")===normTeam(r.away_team);});
       if(hit){
-        r.live=true;r.status="LIVE";
-        r.live_minute=hit.minute||hit.status||"LIVE";
-        r.live_home_score=hit.home_score!=null?hit.home_score:hit.intHomeScore;
-        r.live_away_score=hit.away_score!=null?hit.away_score:hit.intAwayScore;
-        r.live_competition=hit.competition||r.competition||"Football";
-        liveCount++;changed=true;
+        r.live=true;r.status="LIVE";r.lifecycle="LIVE";r.live_minute=hit.minute||hit.status||"LIVE";r.live_home_score=hit.home_score;r.live_away_score=hit.away_score;r.live_competition=hit.competition||r.competition;liveCount++;changed=true;
+        try{var ld=await getJson("/api/match/"+encodeURIComponent(r.event_id)+"/live");r.live_snapshot=ld;r.live_minute=ld.minute||r.live_minute;r.live_home_score=ld.home_score!=null?ld.home_score:r.live_home_score;r.live_away_score=ld.away_score!=null?ld.away_score:r.live_away_score;}catch(e){}
       }else if(r.live){
-        r.live=false;
-        if(r.status==="LIVE")r.status="PENDING";
-        r.live_minute="";r.live_home_score=null;r.live_away_score=null;
+        try{
+          var ld2=await getJson("/api/match/"+encodeURIComponent(r.event_id)+"/live");
+          r.live_snapshot=ld2;
+          if(ld2.completed){r.live=false;r.lifecycle="FINISHED";r.status="FINISHED";r.final_score=ld2.home_score+"-"+ld2.away_score";r.verified=true;}
+          else if(ld2.live){r.live=true;r.lifecycle="LIVE";r.status="LIVE";}
+          else {r.live=false;r.lifecycle="UPCOMING";r.status="UPCOMING";}
+        }catch(e){r.live=false;if(r.status==="LIVE"){r.lifecycle="UPCOMING";r.status="UPCOMING";}}
         changed=true;
       }
-      return r;
-    });
+      if(r.lifecycle==="UPCOMING"&&!r.live&&r.date){
+        var kickoff=new Date((r.date+"T"+String(r.time||"00:00")).replace(" ","T"));
+        if(!isNaN(kickoff.getTime())&&kickoff.getTime()<Date.now()-3*60*60*1000){r.lifecycle="FINISHED";r.status="FINISHED";}
+      }
+    }
     var st=document.getElementById("liveStatus");
-    if(st)st.innerHTML=liveCount?"🔴 <b>"+liveCount+" selected match"+(liveCount===1?" is":"es are")+" live now</b> · scores refresh every 30 seconds":"⚪ No selected matches are live right now · checking every 30 seconds";
+    if(st)st.innerHTML=liveCount?"🔴 <b>"+liveCount+" selected match"+(liveCount===1?" is":"es are")+" live now</b> · live details refresh every 30 seconds":"⚪ No selected matches are live right now · checking every 30 seconds";
     if(changed)localStorage.setItem("aiWagerSavedForecasts",JSON.stringify(rows));
     renderSavedForecasts();
-  }catch(e){
-    var st=document.getElementById("liveStatus");if(st)st.textContent="⚠️ Live feed temporarily unavailable · will retry automatically";
-  }
+  }catch(e){var st=document.getElementById("liveStatus");if(st)st.textContent="⚠️ Live feed temporarily unavailable · will retry automatically";}
 }
 function startLiveTracking(){clearInterval(liveTimer);refreshSelectedLive();liveTimer=setInterval(refreshSelectedLive,30000);}
 
+function liveDetailHtml(r){
+  var s=r.live_snapshot||{},events=(s.scoring_events||[]).slice().reverse(),plays=(s.plays||[]).slice().reverse(),stats=s.team_stats||[];
+  var goals=events.map(function(x){return '<div class="meta">⚽ '+esc(x.clock||"")+' · '+esc(x.text||"Goal")+'</div>';}).join("")||'<div class="meta">No verified scoring event returned yet.</div>';
+  var statHtml=stats.map(function(x){var vals=Object.keys(x.statistics||{}).map(function(k){return esc(k)+": "+esc(x.statistics[k]);}).join(" · ");return '<div class="meta"><b>'+esc(x.team||"Team")+'</b> · '+vals+'</div>';}).join("");
+  var playHtml=plays.slice(0,8).map(function(x){return '<div class="meta">'+esc(x.clock||"")+' · '+esc(x.text||x.short_text||"")+'</div>';}).join("");
+  return '<div class="live-panel"><div class="live-head"><b>LIVE MATCH DATA</b><span>'+esc(s.minute||r.live_minute||"")+'</span></div><div class="live-score">'+esc(s.home_team||r.home_team)+' <b>'+esc(s.home_score!=null?s.home_score:"—")+' - '+esc(s.away_score!=null?s.away_score:"—")+'</b> '+esc(s.away_team||r.away_team)+'</div><div class="live-grid"><section><h4>Goals / scoring events</h4>'+goals+'</section><section><h4>Team statistics</h4>'+(statHtml||'<div class="meta">—</div>')+'</section></div>'+(playHtml?'<details><summary>Recent verified events</summary>'+playHtml+'</details>':"")+'</div>';
+}
 function renderSavedForecasts(){
   var c=document.getElementById("savedContent"),rows=savedForecasts();
-  var pending=rows.filter(function(x){return x.status!=="FINAL"&&!x.live;}).length,finished=rows.filter(function(x){return x.status==="FINAL";}).length;
-  var pt=document.getElementById("selectedPending"),ft=document.getElementById("selectedFinished");
-  if(pt)pt.textContent=pending;if(ft)ft.textContent=finished;updateSelectedCount();
+  var pending=rows.filter(function(x){return x.lifecycle==="UPCOMING";}).length,liveN=rows.filter(function(x){return x.lifecycle==="LIVE";}).length,finished=rows.filter(function(x){return x.lifecycle==="FINISHED";}).length;
+  var pt=document.getElementById("selectedPending"),ft=document.getElementById("selectedFinished");if(pt)pt.textContent=pending;if(ft)ft.textContent=finished;updateSelectedCount();
   if(!rows.length){c.innerHTML='<div class="empty card">No selected matches yet. Go to <b>All Matches</b> and tap ☆ on a match to add it to your checklist.</div>';return;}
-  var shown=rows.filter(function(r){return currentSelectedFilter==="ALL"||(currentSelectedFilter==="LIVE"&&r.live)||(currentSelectedFilter==="PENDING"&&r.status!=="FINAL"&&!r.live)||(currentSelectedFilter==="FINAL"&&r.status==="FINAL");});
-  c.innerHTML=shown.map(function(r){var p=r.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),top=hp>=dp&&hp>=ap?"HOME":dp>=ap?"DRAW":"AWAY",label=top==="HOME"?r.home_team:top==="AWAY"?r.away_team:"Draw",status=r.status==="FINAL"?(r.forecast_correct?"✅ Forecast matched":"❌ Forecast did not match"):(r.result_message?"⚠️ "+r.result_message:"⏳ Waiting for final result");
-    return '<article class="card"><div class="match-top"><div class="league">'+esc(r.competition||"Football")+' · '+esc(r.date||"")+'</div><button class="favorite-btn selected delete-btn" data-id="'+esc(r.event_id)+'" title="Remove from selected">★</button></div><div class="logo-pair">'+logo(r.home_logo,r.home_team)+logo(r.away_logo,r.away_team)+'</div><div class="teams team-names">'+esc(r.home_team)+'<br>vs<br>'+esc(r.away_team)+'</div><div class="probs"><div class="prob">HOME<b>'+hp+'%</b></div><div class="prob">DRAW<b>'+dp+'%</b></div><div class="prob">AWAY<b>'+ap+'%</b></div></div><div class="signal"><b>Original forecast: '+esc(label)+'</b><br>'+status+(r.live?' · LIVE SCORE <b>'+esc(r.live_home_score||0)+' - '+esc(r.live_away_score||0)+'</b>':(r.final_score?' · Final <b>'+esc(r.final_score)+'</b>':''))+'</div><div class="meta">Selected '+esc(new Date(r.saved_at).toLocaleString())+'<br>Original model probability: '+pct(r.model_probability||Math.max(p.home_probability||0,p.draw_probability||0,p.away_probability||0))+'%'+(r.final_score?' · Final score '+esc(r.final_score):'')+'</div><div class="toolbar"><button class="secondary review-btn" data-id="'+esc(r.event_id)+'">↻ Check result</button></div></article>';}).join("")||'<div class="empty card">No matches in this filter.</div>';
+  var shown=rows.filter(function(r){return currentSelectedFilter==="ALL"||(currentSelectedFilter==="LIVE"&&r.lifecycle==="LIVE")||(currentSelectedFilter==="PENDING"&&r.lifecycle==="UPCOMING")||(currentSelectedFilter==="FINAL"&&r.lifecycle==="FINISHED");});
+  c.innerHTML=shown.map(function(r){
+    var p=r.prediction||{},hp=pct(p.home_probability),dp=pct(p.draw_probability),ap=pct(p.away_probability),top=hp>=dp&&hp>=ap?"HOME":dp>=ap?"DRAW":"AWAY",label=top==="HOME"?r.home_team:top==="AWAY"?r.away_team:"Draw";
+    var verdict=r.lifecycle==="FINISHED"?(r.forecast_correct?"✓ Original forecast matched":"Original forecast did not match"):(r.lifecycle==="LIVE"?"🔴 LIVE NOW":"⏳ UPCOMING");
+    var score=r.lifecycle==="LIVE"&&r.live_snapshot?(r.live_snapshot.home_score+" - "+r.live_snapshot.away_score):(r.final_score||"");
+    return '<article class="card"><div class="match-top"><div class="league">'+esc(r.competition||"Football")+' · '+esc(r.date||"")+'</div><button class="favorite-btn selected delete-btn" data-id="'+esc(r.event_id)+'" title="Remove from selected">★</button></div><div class="logo-pair">'+logo(r.home_logo,r.home_team)+logo(r.away_logo,r.away_team)+'</div><div class="teams team-names">'+esc(r.home_team)+'<br>vs<br>'+esc(r.away_team)+'</div><div class="probs"><div class="prob">HOME<b>'+hp+'%</b></div><div class="prob">DRAW<b>'+dp+'%</b></div><div class="prob">AWAY<b>'+ap+'%</b></div></div><div class="signal"><b>Original forecast: '+esc(label)+'</b><br>'+verdict+(score?' · Score <b>'+esc(score)+'</b>':'')+'</div><div class="meta">Selected '+esc(new Date(r.saved_at).toLocaleString())+'<br>Original model probability: '+pct(r.model_probability||Math.max(p.home_probability||0,p.draw_probability||0,p.away_probability||0))+'%'+(r.odds?' · Odds snapshot saved':'')+'</div>'+(r.lifecycle==="LIVE"?liveDetailHtml(r):"")+(r.lifecycle==="FINISHED"?'<div class="meta"><b>Final:</b> '+esc(r.final_score||"—")+' · Verified result: '+esc(r.actual_result||"—")+'</div>':"")+'<div class="toolbar"><button class="secondary review-btn" data-id="'+esc(r.event_id)+'">↻ Check result</button></div></article>';
+  }).join("")||'<div class="empty card">No matches in this filter.</div>';
   c.querySelectorAll(".review-btn").forEach(function(b){b.addEventListener("click",function(){refreshSavedResult(b.getAttribute("data-id"));});});
   c.querySelectorAll(".delete-btn").forEach(function(b){b.addEventListener("click",function(){setSavedForecasts(savedForecasts().filter(function(x){return String(x.event_id)!==String(b.getAttribute("data-id"));}));renderSavedForecasts();});});
 }
