@@ -256,7 +256,7 @@ async function refreshSavedResult(id){
 }
 var currentSelectedFilter="ALL";
 var liveTimer=null;
-async function normTeam(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\b(fc|afc|cf|sc|sk|fk)\b/g,"").replace(/[^a-z0-9]/g,"");}
+function normTeam(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\b(fc|afc|cf|sc|sk|fk)\b/g,"").replace(/[^a-z0-9]/g,"");}
 async function refreshSelectedLive(){
   var rows=savedForecasts(); if(!rows.length)return;
   try{
