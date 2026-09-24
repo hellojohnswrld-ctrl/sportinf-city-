@@ -625,6 +625,71 @@ async def match_analysis(match_id:str):
         "disclaimer": "Probabilities are model estimates, not certainties. Use the graph to inspect evidence and uncertainty; do not treat it as a guarantee."
     }
 
+def _espn_score(x):
+    if not isinstance(x,dict): return None
+    try: return int(float(x.get("score")))
+    except (TypeError,ValueError): return None
+
+def _espn_live_snapshot(data, match_id):
+    header=data.get("header") if isinstance(data.get("header"),dict) else {}
+    comps=header.get("competitions") if isinstance(header.get("competitions"),list) else []
+    comp=comps[0] if comps and isinstance(comps[0],dict) else {}
+    teams=comp.get("competitors") if isinstance(comp.get("competitors"),list) else []
+    home=next((x for x in teams if isinstance(x,dict) and x.get("homeAway")=="home"),None)
+    away=next((x for x in teams if isinstance(x,dict) and x.get("homeAway")=="away"),None)
+    ht=home.get("team") if isinstance(home,dict) else {}
+    at=away.get("team") if isinstance(away,dict) else {}
+    status=((comp.get("status") or {}).get("type") or {})
+    state=str(status.get("state") or "").lower()
+    hs,aws=_espn_score(home),_espn_score(away)
+    plays=[]
+    for p in data.get("plays") or []:
+        if not isinstance(p,dict): continue
+        clock=p.get("clock") if isinstance(p.get("clock"),dict) else {}
+        text_value=p.get("text") or p.get("shortText") or ""
+        plays.append({"id":p.get("id"),"text":text_value,"short_text":p.get("shortText") or text_value,"clock":clock.get("displayValue") or clock.get("value") or "","scoring":bool(p.get("scoringPlay")),"type":((p.get("type") or {}).get("text") if isinstance(p.get("type"),dict) else ""),"team":((p.get("team") or {}).get("displayName") if isinstance(p.get("team"),dict) else "")})
+    scoring=[p for p in plays if p.get("scoring")]
+    stats=[]
+    box=data.get("boxscore") if isinstance(data.get("boxscore"),dict) else {}
+    for group in box.get("teams") or []:
+        if not isinstance(group,dict): continue
+        team=group.get("team") if isinstance(group.get("team"),dict) else {}
+        vals={}
+        for st in group.get("statistics") or []:
+            if isinstance(st,dict): vals[st.get("name") or st.get("label") or "stat"]=st.get("displayValue",st.get("value"))
+        stats.append({"team":team.get("displayName") or "","logo":team.get("logo") or "","statistics":vals})
+    leaders=[]
+    for group in data.get("leaders") or []:
+        if not isinstance(group,dict): continue
+        cat=group.get("name") or group.get("displayName") or ""
+        for l in group.get("leaders") or []:
+            if not isinstance(l,dict): continue
+            ath=l.get("athlete") if isinstance(l.get("athlete"),dict) else {}
+            leaders.append({"category":cat,"name":ath.get("displayName") or "","value":l.get("displayValue") or l.get("value")})
+    completed=bool(status.get("completed")) or state in ("post","final")
+    live=state in ("in","live") and not completed
+    return {"event_id":match_id,"home_team":ht.get("displayName") or "","away_team":at.get("displayName") or "","home_logo":ht.get("logo") or "","away_logo":at.get("logo") or "","home_score":hs,"away_score":aws,"status":status.get("description") or status.get("detail") or "Scheduled","state":state,"completed":completed,"live":live,"minute":status.get("shortDetail") or status.get("detail") or "","competition":((comp.get("league") or {}).get("name") or "Football"),"venue":((comp.get("venue") or {}).get("fullName") or ""),"plays":plays[-30:],"scoring_events":scoring[-15:],"team_stats":stats,"leaders":leaders,"last_updated":datetime.datetime.now(datetime.timezone.utc).isoformat()}
+
+@app.get("/api/match/{match_id}/live")
+async def match_live(match_id:str):
+    if match_id.startswith("espn-"):
+        try: return _espn_live_snapshot(await football.espn_event_details(match_id),match_id)
+        except Exception:
+            try:
+                day=await football.espn_fixtures()
+                e=next((x for x in day.get("events") or [] if str(x.get("idEvent"))==str(match_id)),None)
+                if e: return {"event_id":match_id,"home_team":e.get("strHomeTeam"),"away_team":e.get("strAwayTeam"),"home_score":None,"away_score":None,"status":e.get("strStatus") or "Scheduled","state":"","completed":False,"live":False,"minute":"","competition":e.get("strLeague") or "Football","plays":[],"scoring_events":[],"team_stats":[],"leaders":[]}
+            except Exception: pass
+            return {"event_id":match_id,"error":"Live details unavailable","live":False,"completed":False}
+    if str(match_id).isdigit():
+        try:
+            data=await football.fixture(int(match_id)); e=(data.get("events") or [None])[0]
+            if not e:return {"event_id":match_id,"error":"Match not found","live":False,"completed":False}
+            hs=_num(e.get("intHomeScore"),None); aws=_num(e.get("intAwayScore"),None); status=str(e.get("strStatus") or "Scheduled"); done=status.lower() in ("final","completed","post")
+            return {"event_id":match_id,"home_team":e.get("strHomeTeam") or "","away_team":e.get("strAwayTeam") or "","home_score":hs,"away_score":aws,"status":status,"state":"post" if done else "","completed":done,"live":not done and hs is not None,"minute":e.get("strProgress") or e.get("strStatus") or "","competition":e.get("strLeague") or "Football","venue":e.get("strVenue") or "","plays":[],"scoring_events":[],"team_stats":[],"leaders":[]}
+        except Exception as exc: return {"event_id":match_id,"error":"Live details unavailable","detail":str(exc),"live":False,"completed":False}
+    return {"event_id":match_id,"error":"Unsupported match id","live":False,"completed":False}
+
 @app.get("/api/match/{match_id}/result")
 async def match_result(match_id:str):
     """Return final score/result when the selected match has completed."""
