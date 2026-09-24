@@ -269,7 +269,7 @@ async function refreshSelectedLive(){
         try{
           var ld2=await getJson("/api/match/"+encodeURIComponent(r.event_id)+"/live");
           r.live_snapshot=ld2;
-          if(ld2.completed){r.live=false;r.lifecycle="FINISHED";r.status="FINISHED";r.final_score=ld2.home_score+"-"+ld2.away_score";r.verified=true;}
+          if(ld2.completed){r.live=false;r.lifecycle="FINISHED";r.status="FINISHED";r.final_score=ld2.home_score+"-"+ld2.away_score;r.verified=true;}
           else if(ld2.live){r.live=true;r.lifecycle="LIVE";r.status="LIVE";}
           else {r.live=false;r.lifecycle="UPCOMING";r.status="UPCOMING";}
         }catch(e){r.live=false;if(r.status==="LIVE"){r.lifecycle="UPCOMING";r.status="UPCOMING";}}
