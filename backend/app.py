@@ -150,6 +150,36 @@ def _form_stats(events,team_id):
         played+=1;gd+=gf-ga;points+=3 if gf>ga else 1 if gf==ga else 0
     return {"played":int(played),"ppg":round(points/played,3) if played else 1.0,"avg_goal_difference":round(gd/played,3) if played else 0.0,"avg_goals_for":round(sum(_num(e.get("intHomeScore") if str(e.get("idHomeTeam"))==str(team_id) else e.get("intAwayScore")) for e in events if str(e.get("idHomeTeam"))==str(team_id) or str(e.get("idAwayTeam"))==str(team_id))/played,3) if played else 1.4,"avg_goals_against":round(sum(_num(e.get("intAwayScore") if str(e.get("idHomeTeam"))==str(team_id) else e.get("intHomeScore")) for e in events if str(e.get("idHomeTeam"))==str(team_id) or str(e.get("idAwayTeam"))==str(team_id))/played,3) if played else 1.4}
 def _key(v):return "".join(ch.lower() for ch in (v or "") if ch.isalnum())
+
+# 1xBet-friendly display/search names. These are presentation aliases only;
+# provider names and IDs remain untouched for data matching and history.
+_XBET_ALIASES={
+    "manchester utd":"Manchester United",
+    "man utd":"Manchester United",
+    "man united":"Manchester United",
+    "tottenham hotspur":"Tottenham",
+    "spurs":"Tottenham",
+    "newcastle utd":"Newcastle United",
+    "west ham utd":"West Ham United",
+    "wolverhampton":"Wolverhampton Wanderers",
+    "wolves":"Wolverhampton Wanderers",
+    "nottm forest":"Nottingham Forest",
+    "athletic club":"Athletic Bilbao",
+    "internazionale":"Inter Milan",
+    "paris saint-germain":"PSG",
+    "paris sg":"PSG",
+    "atletico de madrid":"Atletico Madrid",
+    "sporting cp":"Sporting Lisbon",
+}
+
+def _xbet_name(name):
+    raw=" ".join(str(name or "").replace("FC ","").split())
+    if not raw:return ""
+    return _XBET_ALIASES.get(raw.casefold(),raw)
+
+def _xbet_fields(home,away):
+    return {"xbet_home_team":_xbet_name(home),"xbet_away_team":_xbet_name(away),
+            "match_search_name":f"{_xbet_name(home)} vs {_xbet_name(away)}"}
 def _competition_category(name):
     n=(name or "").lower()
     if any(x in n for x in ("friendly","international friendly")): return "Friendly"
@@ -199,7 +229,7 @@ async def _predict_event(event,odds_map=None):
                   sample_home=hf["played"],sample_away=af["played"])
     odds=odds_map.get((_key(event.get("strHomeTeam")),_key(event.get("strAwayTeam")))) if odds_map else None
     val=value_layer(pred,odds)
-    out={"fixture_id":event.get("idEvent"),"home_team":event.get("strHomeTeam"),"away_team":event.get("strAwayTeam"),"home_logo":event.get("strHomeTeamBadge") or event.get("home_logo") or "","away_logo":event.get("strAwayTeamBadge") or event.get("away_logo") or "","date":event.get("dateEvent"),"time":event.get("strTime"),"league":event.get("strLeague"),"venue":event.get("strVenue"),"home_form":hf,"away_form":af,"prediction":pred,"odds":odds,"value":val,"analysis":analysis_layer(pred,val),"model_note":"Baseline model using recent form, goal difference and home advantage. Not a guarantee."}
+    out={"fixture_id":event.get("idEvent"),"home_team":event.get("strHomeTeam"),"away_team":event.get("strAwayTeam"),**_xbet_fields(event.get("strHomeTeam"),event.get("strAwayTeam")),"home_logo":event.get("strHomeTeamBadge") or event.get("home_logo") or "","away_logo":event.get("strAwayTeamBadge") or event.get("away_logo") or "","date":event.get("dateEvent"),"time":event.get("strTime"),"league":event.get("strLeague"),"venue":event.get("strVenue"),"home_form":hf,"away_form":af,"prediction":pred,"odds":odds,"value":val,"analysis":analysis_layer(pred,val),"model_note":"Baseline model using recent form, goal difference and home advantage. Not a guarantee."}
     log_prediction(out);return out
 async def _scan_game(game,odds_map):
     home,away=game.get("home_team"),game.get("away_team")
@@ -210,7 +240,7 @@ async def _scan_game(game,odds_map):
             event={"idEvent":game.get("id"),"idHomeTeam":h.get("idTeam"),"idAwayTeam":a.get("idTeam"),"strHomeTeam":home,"strAwayTeam":away,"dateEvent":(game.get("commence_time") or "")[:10],"strTime":(game.get("commence_time") or "")[11:16],"strLeague":game.get("sport_title")}
             return await _predict_event(event,odds_map)
     except Exception:pass
-    return {"fixture_id":game.get("id"),"home_team":home,"away_team":away,"date":(game.get("commence_time") or "")[:10],"time":(game.get("commence_time") or "")[11:16],"league":game.get("sport_title"),"odds":odds_map.get((_key(home),_key(away))),"value":None,"analysis":{"signal":"ODDS_ONLY","score":0,"reasons":["Fixture found from bookmaker feeds; recent-form team lookup was unavailable."]}}
+    return {"fixture_id":game.get("id"),"home_team":home,"away_team":away,**_xbet_fields(home,away),"date":(game.get("commence_time") or "")[:10],"time":(game.get("commence_time") or "")[11:16],"league":game.get("sport_title"),"odds":odds_map.get((_key(home),_key(away))),"value":None,"analysis":{"signal":"ODDS_ONLY","score":0,"reasons":["Fixture found from bookmaker feeds; recent-form team lookup was unavailable."]}}
 @app.get("/api/search")
 async def search_matches(q: str = "", category: str = "all"):
     """Search today's broad football feed by teams/competition and filter by competition type."""
@@ -282,7 +312,7 @@ async def vip_forecast(request:Request):
                   sample_home=hf["played"],sample_away=af["played"])
         probs={"HOME":float(pred.get("home_probability",0)),"DRAW":float(pred.get("draw_probability",0)),"AWAY":float(pred.get("away_probability",0))}
         top=max(probs,key=probs.get)
-        rows.append({"fixture_id":e.get("idEvent"),"home_team":e.get("strHomeTeam"),"away_team":e.get("strAwayTeam"),"competition":e.get("strLeague"),"date":e.get("dateEvent"),"time":e.get("strTime"),"venue":e.get("strVenue"),"home_logo":e.get("strHomeTeamBadge") or "","away_logo":e.get("strAwayTeamBadge") or "","prediction":pred,"selection":top,"selection_probability":probs[top],"data_quality":"standard ESPN recent-form sample"})
+        rows.append({"fixture_id":e.get("idEvent"),"home_team":e.get("strHomeTeam"),"away_team":e.get("strAwayTeam"),**_xbet_fields(e.get("strHomeTeam"),e.get("strAwayTeam")),"competition":e.get("strLeague"),"date":e.get("dateEvent"),"time":e.get("strTime"),"venue":e.get("strVenue"),"home_logo":e.get("strHomeTeamBadge") or "","away_logo":e.get("strAwayTeamBadge") or "","prediction":pred,"selection":top,"selection_probability":probs[top],"data_quality":"standard ESPN recent-form sample"})
     rows.sort(key=lambda x:x["selection_probability"],reverse=True)
     return {"title":"JOHN FORCAST VIP","count":min(15,len(rows)),"matches":rows[:15],"disclaimer":"These are the 15 highest model-probability upcoming matches available to the scanner. Probabilities are estimates, not guarantees."}
 
