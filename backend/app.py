@@ -190,6 +190,7 @@ def _competition_category(name):
     return "League"
 def _decorate_event(e):
     out=dict(e)
+    out.update(_xbet_fields(out.get("strHomeTeam") or out.get("home_team"),out.get("strAwayTeam") or out.get("away_team")))
     out["competition_category"]=_competition_category(out.get("strLeague") or out.get("league"))
     return out
 def _name_form_stats(events):
@@ -436,6 +437,7 @@ async def scan_today():
             "fixture_id": e.get("idEvent"),
             "home_team": e.get("strHomeTeam"),
             "away_team": e.get("strAwayTeam"),
+            **_xbet_fields(e.get("strHomeTeam"),e.get("strAwayTeam")),
             "home_logo": e.get("strHomeTeamBadge") or e.get("home_logo") or "",
             "away_logo": e.get("strAwayTeamBadge") or e.get("away_logo") or "",
             "date": e.get("dateEvent"),
