@@ -23,7 +23,13 @@ def _vip_code(bucket=None):
     if bucket is None:
         bucket=int(time.time()//VIP_TTL)
     digest=hmac.new(VIP_CODE_SECRET.encode(),str(bucket).encode(),hashlib.sha256).digest()
-    return str(int.from_bytes(digest[:4],"big")%1000000).zfill(6)
+    alphabet="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    value=int.from_bytes(digest[:8],"big")
+    chars=[]
+    for _ in range(6):
+        value,idx=divmod(value,len(alphabet))
+        chars.append(alphabet[idx])
+    return "".join(chars)
 
 def _vip_code_valid(code):
     code=str(code or "").strip()
