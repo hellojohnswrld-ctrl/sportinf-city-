@@ -646,8 +646,24 @@ async def match_result(match_id:str):
             status_type=status_obj.get("type") if isinstance(status_obj.get("type"),dict) else {}
             if hs is None or as_ is None:
                 return {"event_id":match_id,"completed":False,"status":status_type.get("description") or "Not finished"}
-            return {"event_id":match_id,"completed":bool(status_type.get("completed",False)),"status":status_type.get("description") or "Final","home_score":hs,"away_score":as_,"result":"HOME" if hs>as_ else "DRAW" if hs==as_ else "AWAY"}
+            completed=bool(status_type.get("completed",False))
+            state=(status_type.get("state") or "").lower()
+            if state in ("post","final"):
+                completed=True
+            return {"event_id":match_id,"completed":completed,"status":status_type.get("description") or ("Final" if completed else "Not finished"),"home_score":hs,"away_score":as_,"result":"HOME" if hs>as_ else "DRAW" if hs==as_ else "AWAY"}
         except Exception as exc:
+            # ESPN summary can occasionally fail while the broad scoreboard is
+            # still available. Fall back to today's scoreboard before reporting
+            # the result as unavailable.
+            try:
+                day=await football.espn_fixtures()
+                target=next((x for x in (day.get("events") or []) if str(x.get("idEvent"))==str(match_id)),None)
+                if target:
+                    status=str(target.get("strStatus") or "Not finished")
+                    done=status.lower() in ("final","completed","post")
+                    return {"event_id":match_id,"completed":done,"status":status}
+            except Exception:
+                pass
             return {"event_id":match_id,"completed":False,"error":"Result unavailable","detail":str(exc)}
     if str(match_id).isdigit():
         try:
