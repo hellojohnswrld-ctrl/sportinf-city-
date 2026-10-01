@@ -1,0 +1,9 @@
+<resources>
+    <color name="black">#080B10</color>
+    <color name="panel">#111722</color>
+    <color name="text">#F4F7FB</color>
+    <color name="muted">#9AA7B7</color>
+    <color name="green">#35D07F</color>
+    <color name="red">#FF5C66</color>
+    <color name="yellow">#FFD166</color>
+</resources>
