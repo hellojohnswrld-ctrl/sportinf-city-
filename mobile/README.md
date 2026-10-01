@@ -24,3 +24,5 @@ A future update endpoint can return:
 
 ## Build
 GitHub Actions builds the APK automatically. Future releases should increment versionCode/versionName.
+
+Build trigger verification: 2026-10-01.
