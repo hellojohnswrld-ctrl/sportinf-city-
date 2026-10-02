@@ -998,3 +998,400 @@ bool RecentFVGPoint(FlowPoint &fp,bool bullish)
       { fp.t=iTime(_Symbol,SignalTF,i); fp.p=(hOld+lNew)*0.5; return true; }
       if(!bullish && hNew<lOld && (lOld-hNew)>=atr*0.10)
       { fp.t=iTime(_Symbol,SignalTF,i); fp.p=(hNew+lOld)*0.5; return true; }
+   }
+   return false;
+}
+
+bool RecentOBPoint(FlowPoint &fp,bool bullish)
+{
+   fp.t=0; fp.p=0; fp.type=3;
+   double atr=Buf(hATR,0,1); if(atr==EMPTY_VALUE||atr<=0) return false;
+   int scan=MathMax(2,MathMin(FlowScanBars,20));
+   for(int i=1;i<=scan;i++)
+   {
+      double o=iOpen(_Symbol,SignalTF,i), c=iClose(_Symbol,SignalTF,i);
+      double oPrev=iOpen(_Symbol,SignalTF,i+1), cPrev=iClose(_Symbol,SignalTF,i+1);
+      if(bullish && c>o && c-o>=atr*0.55 && cPrev<oPrev)
+      { fp.t=iTime(_Symbol,SignalTF,i+1); fp.p=(oPrev+cPrev)*0.5; return true; }
+      if(!bullish && c<o && o-c>=atr*0.55 && cPrev>oPrev)
+      { fp.t=iTime(_Symbol,SignalTF,i+1); fp.p=(oPrev+cPrev)*0.5; return true; }
+   }
+   return false;
+}
+
+void FlowLabel(const string name,datetime t,double p,const string txt,color c)
+{
+   if(!ShowFlowLabels) return;
+   SetText(name,t,p,txt,c,8);
+}
+
+void DrawFlowSequence(const Analysis &a)
+{
+   if(!ShowFlowSequence) return;
+   string base=prefix+"FLOW_";
+   // Clear only the flow-sequence objects; keep the main map intact.
+   for(int i=0;i<10;i++)
+   {
+      ObjectDelete(0,base+"L"+IntegerToString(i));
+      ObjectDelete(0,base+"T"+IntegerToString(i));
+      ObjectDelete(0,base+"A"+IntegerToString(i));
+   }
+
+   bool bull=(a.bias=="BULLISH" || (a.state==STATE_BUY));
+   bool bear=(a.bias=="BEARISH" || (a.state==STATE_SELL));
+   if(!bull && !bear) return;
+   bool directionBull=bull && !bear;
+   if(bull && bear) directionBull=(a.buyScore>=a.sellScore);
+   color c=directionBull?GREEN:RED;
+
+   FlowPoint liq,bos,zone; bool sweepBull=false;
+   bool hasLiq=RecentLiquiditySweep(liq,sweepBull);
+   if(hasLiq && sweepBull!=directionBull) hasLiq=false;
+   bool hasBos=RecentBOS(bos,directionBull);
+   bool hasZone=RecentFVGPoint(zone,directionBull);
+   if(!hasZone) hasZone=RecentOBPoint(zone,directionBull);
+
+   int n=0;
+   if(hasLiq)
+   {
+      SetChartArrow(base+"A"+IntegerToString(n),liq.t,liq.p,directionBull,c);
+      FlowLabel(base+"T"+IntegerToString(n),liq.t,liq.p+(directionBull?-a.atr*0.5:a.atr*0.5),"1  LIQUIDITY SWEEP",c);
+      n++;
+   }
+   if(hasBos)
+   {
+      SetChartArrow(base+"A"+IntegerToString(n),bos.t,bos.p,directionBull,c);
+      FlowLabel(base+"T"+IntegerToString(n),bos.t,bos.p+(directionBull?a.atr*0.35:-a.atr*0.35),directionBull?"2  BOS ↑":"2  BOS ↓",c);
+      n++;
+   }
+   if(hasZone)
+   {
+      SetText(base+"A"+IntegerToString(n),zone.t,zone.p,"3",c,11);
+      FlowLabel(base+"T"+IntegerToString(n),zone.t,zone.p+(directionBull?-a.atr*0.35:a.atr*0.35),"3  FVG / OB",c);
+      n++;
+   }
+
+   datetime now=iTime(_Symbol,SignalTF,0); double ep=a.entry>0?a.entry:PriceNow(directionBull);
+   if(now>0&&ep>0)
+   {
+      SetChartArrow(base+"A"+IntegerToString(n),now,ep,directionBull,c);
+      FlowLabel(base+"T"+IntegerToString(n),now,ep+(directionBull?-a.atr*0.35:a.atr*0.35),directionBull?"4  BUY ENTRY":"4  SELL ENTRY",c);
+      n++;
+   }
+
+   // Connect the actual detected points in chronological order where available.
+   FlowPoint pts[4]; int pc=0;
+   if(hasLiq) pts[pc++]=liq;
+   if(hasBos) pts[pc++]=bos;
+   if(hasZone) pts[pc++]=zone;
+   if(now>0&&ep>0){pts[pc].t=now;pts[pc].p=ep;pts[pc].type=4;pc++;}
+   for(int i=0;i<pc-1;i++)
+   {
+      datetime t1=pts[i].t,t2=pts[i+1].t; double p1=pts[i].p,p2=pts[i+1].p;
+      if(t1>0&&t2>0&&t1!=t2) SetTrend(base+"L"+IntegerToString(i),t1,p1,t2,p2,c,STYLE_SOLID,2,false);
+   }
+
+   SetLabel(prefix+"FLOW_STATUS","FLOW: "+(directionBull?"BULLISH":"BEARISH")+"  |  "+IntegerToString(n)+"/4 stages",PanelX+16,PanelY+540,c,8);
+}
+
+void DrawLiveIntelligence(const Analysis &a)
+{
+   DrawStructureAndLiquidity(a);
+   DrawOrderBlockMap(a);
+   DrawEntryMap(a);
+   DrawForecastMap(a);
+   DrawClearTradeMap(a);
+   DrawFlowSequence(a);
+}
+
+void DrawLevels(const Analysis &a)
+{
+   DrawFVGZone();
+   if(DrawSupportResistance){HLine(prefix+"SUP",a.lv.support,GREEN);HLine(prefix+"RES",a.lv.resistance,RED);}
+
+   // Keep the visual trade map available while a directional setup is forming,
+   // not only after the state reaches confirmed BUY/SELL.
+   bool directional=(a.bias=="BULLISH" || a.bias=="BEARISH" || a.state==STATE_BUY || a.state==STATE_SELL);
+   if(directional && a.entry>0)
+   {
+      color ec=(a.state==STATE_BUY||a.bias=="BULLISH")?GREEN:(a.state==STATE_SELL||a.bias=="BEARISH")?RED:YELLOW;
+      HLine(prefix+"ENTRY",a.entry,ec,STYLE_SOLID);
+      if(a.sl>0)HLine(prefix+"SL",a.sl,RED,STYLE_DASH);
+      if(a.tp1>0)HLine(prefix+"TP1",a.tp1,GREEN,STYLE_DASH);
+      if(a.tp2>0)HLine(prefix+"TP2",a.tp2,GREEN,STYLE_DOT);
+   }
+   else
+   {
+      ObjectDelete(0,prefix+"ENTRY"); ObjectDelete(0,prefix+"SL"); ObjectDelete(0,prefix+"TP1"); ObjectDelete(0,prefix+"TP2");
+   }
+}
+
+
+void DrawArrow(const Analysis &a)
+{
+   if(!DrawSignalArrows || (a.state!=STATE_BUY && a.state!=STATE_SELL))return;
+   string n=prefix+(a.state==STATE_BUY?"BUY_ARROW":"SELL_ARROW");datetime t=iTime(_Symbol,SignalTF,1);double p=(a.state==STATE_BUY?iLow(_Symbol,SignalTF,1)-a.atr*0.25:iHigh(_Symbol,SignalTF,1)+a.atr*0.25);
+   if(ObjectFind(0,n)<0)ObjectCreate(0,n,a.state==STATE_BUY?OBJ_ARROW_BUY:OBJ_ARROW_SELL,0,t,p);else ObjectMove(0,n,0,t,p);
+   ObjectSetInteger(0,n,OBJPROP_COLOR,a.state==STATE_BUY?GREEN:RED);ObjectSetInteger(0,n,OBJPROP_WIDTH,3);
+}
+
+void AlertForState(const Analysis &a)
+{
+   if(!EnableAlerts)return;
+   if((a.state==STATE_BUY || a.state==STATE_SELL) && !a.marginOK) return;
+   datetime bar=iTime(_Symbol,SignalTF,1);string key=(a.state==STATE_BUY?"BUY":(a.state==STATE_SELL?"SELL":"WAIT"));
+   if(a.state==STATE_WAIT && !EnableEarlyWarning)return;
+   if(key==lastAlertKey && bar==lastAlertBar && (TimeCurrent()-lastAlertTime)<AlertCooldownSeconds)return;
+   if(a.state==STATE_WAIT && a.strength<55)return;
+   lastAlertKey=key;lastAlertBar=bar;lastAlertTime=TimeCurrent();
+   string msg="V4.12.3 "+assetName+" "+key+" | Strength "+IntegerToString(a.strength)+"/100";
+   if(a.state==STATE_BUY||a.state==STATE_SELL)msg+=" | Entry "+DoubleToString(a.entry,_Digits)+" SL "+DoubleToString(a.sl,_Digits)+" TP1 "+DoubleToString(a.tp1,_Digits)+" TP2 "+DoubleToString(a.tp2,_Digits);
+   else msg+=" | "+a.reason;
+   if(!a.guardianOK) msg+=" | GUARDIAN ACTIVE";
+   if(EnableSoundAlerts)PlaySound(a.state==STATE_BUY?BuySound:(a.state==STATE_SELL?SellSound:WaitSound));
+   Alert(msg);
+   if(EnablePushAlerts && TerminalInfoInteger(TERMINAL_NOTIFICATIONS_ENABLED))SendNotification(msg);
+}
+
+int OpenPositions()
+{
+   int n=0;
+   for(int i=PositionsTotal()-1;i>=0;i--){ulong ticket=PositionGetTicket(i);if(ticket>0&&PositionGetString(POSITION_SYMBOL)==_Symbol&&(ulong)PositionGetInteger(POSITION_MAGIC)==MagicNumber)n++;}
+   return n;
+}
+
+double NormalizeLot(double lot)
+{
+   double minv=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN),maxv=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX),step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);if(step<=0)step=minv;
+   lot=MathMax(minv,MathMin(maxv,lot));return NormalizeDouble(MathFloor(lot/step)*step,2);
+}
+
+double RiskLot(double entry,double sl)
+{
+   if(!UseRiskPercent)return NormalizeLot(FixedLot);
+   double money=AccountInfoDouble(ACCOUNT_BALANCE)*RiskPercent/100.0;
+   double dist=MathAbs(entry-sl);
+   if(money<=0.0 || dist<=0.0 || entry<=0.0 || sl<=0.0) return NormalizeLot(FixedLot);
+   ENUM_ORDER_TYPE typ=(entry>sl?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
+   double lossOneLot=0.0;
+   if(OrderCalcProfit(typ,_Symbol,1.0,entry,sl,lossOneLot) && MathAbs(lossOneLot)>0.0)
+      return NormalizeLot(money/MathAbs(lossOneLot));
+   double tv=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE);
+   double ts=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+   if(tv<=0.0 || ts<=0.0) return NormalizeLot(FixedLot);
+   return NormalizeLot(money/((dist/ts)*tv));
+}
+
+double MarginLotForOrder(ENUM_ORDER_TYPE orderType,double entry,double desiredLot,double &requiredMargin,double &projectedLevel)
+{
+   requiredMargin=0.0; projectedLevel=0.0;
+   double equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   double used=AccountInfoDouble(ACCOUNT_MARGIN);
+   double free=AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+   if(equity<=0.0 || free<=0.0 || desiredLot<=0.0) return 0.0;
+
+   double minv=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   double step=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   if(step<=0.0) step=minv;
+   double maxv=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   double lot=MathMin(desiredLot,maxv);
+
+   double marginPerLot=0.0;
+   if(!OrderCalcMargin(orderType,_Symbol,1.0,entry,marginPerLot) || marginPerLot<=0.0)
+      return 0.0;
+
+   double maxByFree=(free*(MaxMarginUsePercent/100.0))/marginPerLot;
+   double maxByLevel=desiredLot;
+   if(MinProjectedMarginLevel>0.0)
+   {
+      double maxTotalMargin=equity/(MinProjectedMarginLevel/100.0);
+      double availableForTrade=maxTotalMargin-used;
+      maxByLevel=availableForTrade/marginPerLot;
+   }
+   lot=MathMin(lot,MathMin(maxByFree,maxByLevel));
+   lot=MathFloor(lot/step)*step;
+   if(lot<minv) return 0.0;
+   lot=MathMin(maxv,lot);
+   lot=NormalizeLot(lot);
+
+   if(!OrderCalcMargin(orderType,_Symbol,lot,entry,requiredMargin) || requiredMargin<=0.0) return 0.0;
+   double projected=used+requiredMargin;
+   projectedLevel=(projected>0.0)?(equity/projected*100.0):999999.0;
+   if(requiredMargin>free*(MaxMarginUsePercent/100.0)) return 0.0;
+   if(MinProjectedMarginLevel>0.0 && projectedLevel<MinProjectedMarginLevel) return 0.0;
+   return lot;
+}
+
+double MarginAwareLot(const Analysis &a)
+{
+   double baseLot=RiskLot(a.entry,a.sl);
+   if(!UseMarginGuard) return baseLot;
+   ENUM_ORDER_TYPE typ=(a.state==STATE_BUY?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
+   double req=0.0,proj=0.0;
+   return MarginLotForOrder(typ,a.entry,baseLot,req,proj);
+}
+
+void UpdateMarginInfo(Analysis &a)
+{
+   a.balance=AccountInfoDouble(ACCOUNT_BALANCE);
+   a.equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   a.marginUsed=AccountInfoDouble(ACCOUNT_MARGIN);
+   a.freeMargin=AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+   a.marginLevel=AccountInfoDouble(ACCOUNT_MARGIN_LEVEL);
+   a.tradeMargin=0.0; a.projectedMarginLevel=a.marginLevel; a.lot=0.0; a.marginOK=true;
+   if(a.state==STATE_WAIT || a.entry<=0.0 || a.sl<=0.0) return;
+   a.lot=MarginAwareLot(a);
+   ENUM_ORDER_TYPE typ=(a.state==STATE_BUY?ORDER_TYPE_BUY:ORDER_TYPE_SELL);
+   if(a.lot<=0.0){a.marginOK=false; return;}
+   if(!OrderCalcMargin(typ,_Symbol,a.lot,a.entry,a.tradeMargin)){a.marginOK=false;return;}
+   double projected=a.marginUsed+a.tradeMargin;
+   a.projectedMarginLevel=(projected>0.0)?(a.equity/projected*100.0):999999.0;
+   a.marginOK=(a.tradeMargin<=a.freeMargin*(MaxMarginUsePercent/100.0) && (MinProjectedMarginLevel<=0.0 || a.projectedMarginLevel>=MinProjectedMarginLevel));
+   if(!a.marginOK){a.lot=0.0;}
+   if(!a.guardianOK) a.reason=a.guardianReason;
+   else if(!a.marginOK) a.reason="SIGNAL DETECTED: margin guard would block execution at current size";
+   else a.reason=BuildDecisionReason(a);
+   CalculateReadiness(a);
+}
+
+
+string GuardianKey()
+{
+   return StringFormat("ALT_GUARD_PEAK_%I64d_%I64u",AccountInfoInteger(ACCOUNT_LOGIN),MagicNumber);
+}
+
+datetime StartOfDay(datetime t)
+{
+   MqlDateTime d; TimeToStruct(t,d); d.hour=0; d.min=0; d.sec=0; return StructToTime(d);
+}
+
+void GetGuardianStats(double &startBalance,double &realized,double &lossMoney,double &lossPct,int &trades,int &losses,int &cooldown)
+{
+   startBalance=AccountInfoDouble(ACCOUNT_BALANCE); realized=0; trades=0; losses=0; cooldown=0;
+   datetime now=TimeTradeServer(); if(now<=0) now=TimeCurrent();
+   datetime day=StartOfDay(now);
+   if(HistorySelect(day,now))
+   {
+      int total=HistoryDealsTotal();
+      datetime lastLoss=0;
+      for(int i=0;i<total;i++)
+      {
+         ulong ticket=HistoryDealGetTicket(i); if(ticket==0) continue;
+         long entry=HistoryDealGetInteger(ticket,DEAL_ENTRY);
+         if(entry!=DEAL_ENTRY_OUT && entry!=DEAL_ENTRY_OUT_BY) continue;
+         long magic=HistoryDealGetInteger(ticket,DEAL_MAGIC);
+         if(!GuardianAccountWide && (ulong)magic!=MagicNumber) continue;
+         double p=HistoryDealGetDouble(ticket,DEAL_PROFIT)+HistoryDealGetDouble(ticket,DEAL_SWAP)+HistoryDealGetDouble(ticket,DEAL_COMMISSION);
+         realized+=p; trades++;
+         if(p<0){losses++; datetime dt=(datetime)HistoryDealGetInteger(ticket,DEAL_TIME); if(dt>lastLoss) lastLoss=dt;}
+      }
+      startBalance=AccountInfoDouble(ACCOUNT_BALANCE)-realized;
+      if(LossCooldownMinutes>0 && lastLoss>0)
+      {
+         int elapsed=(int)(now-lastLoss); int wait=LossCooldownMinutes*60-elapsed;
+         cooldown=(wait>0)?(int)MathCeil((double)wait/60.0):0;
+      }
+   }
+   double equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   lossMoney=MathMax(0.0,startBalance-equity);
+   lossPct=(startBalance>0)?(lossMoney/startBalance*100.0):0.0;
+}
+
+double UpdatePeakEquity()
+{
+   string key=GuardianKey(); double peak=AccountInfoDouble(ACCOUNT_EQUITY);
+   if(GlobalVariableCheck(key)) peak=MathMax(peak,GlobalVariableGet(key));
+   GlobalVariableSet(key,peak); return peak;
+}
+
+void GuardianEmergencyClose()
+{
+   if(!EmergencyCloseEAOrders) return;
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i); if(ticket==0) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC)!=MagicNumber) continue;
+      if(PositionGetString(POSITION_SYMBOL)!=_Symbol) continue;
+      trade.SetExpertMagicNumber(MagicNumber); trade.PositionClose(ticket);
+   }
+}
+
+void UpdateGuardian(Analysis &a)
+{
+   a.guardianOK=true; a.guardianReason="GUARDIAN OK";
+   a.dailyStartBalance=0; a.dailyRealizedPL=0; a.dailyLossMoney=0; a.dailyLossPct=0;
+   a.peakEquity=UpdatePeakEquity();
+   a.drawdownPct=(a.peakEquity>0)?MathMax(0.0,(a.peakEquity-a.equity)/a.peakEquity*100.0):0;
+   a.tradesToday=0; a.losingTradesToday=0; a.lossCooldownMinutes=0;
+   if(!UseTradingGuardian) return;
+   GetGuardianStats(a.dailyStartBalance,a.dailyRealizedPL,a.dailyLossMoney,a.dailyLossPct,a.tradesToday,a.losingTradesToday,a.lossCooldownMinutes);
+   double maxLoss=MaxDailyLossMoney>0?MaxDailyLossMoney:(a.dailyStartBalance*MaxDailyLossPercent/100.0);
+   if(maxLoss>0 && a.dailyLossMoney>=maxLoss){a.guardianOK=false;a.guardianReason="DAILY LOSS LIMIT";}
+   if(a.drawdownPct>=MaxEquityDrawdownPercent && MaxEquityDrawdownPercent>0){a.guardianOK=false;a.guardianReason="EQUITY DRAWDOWN LIMIT";}
+   if(MaxTradesPerDay>0 && a.tradesToday>=MaxTradesPerDay){a.guardianOK=false;a.guardianReason="DAILY TRADE LIMIT";}
+   if(MaxLosingTradesPerDay>0 && a.losingTradesToday>=MaxLosingTradesPerDay){a.guardianOK=false;a.guardianReason="LOSS COUNT LIMIT";}
+   if(a.lossCooldownMinutes>0){a.guardianOK=false;a.guardianReason="LOSS COOLDOWN "+IntegerToString(a.lossCooldownMinutes)+"m";}
+   if(!a.guardianOK) GuardianEmergencyClose();
+   a.reason=BuildDecisionReason(a);
+   CalculateReadiness(a);
+}
+
+void ExecuteTrade(const Analysis &a)
+{
+   if(!AllowAlgoTrading||a.state==STATE_WAIT||a.newsBlocked||!a.spreadOK||!a.marginOK||!a.guardianOK||OpenPositions()>=MaxOpenTrades)return;
+   double lot=a.lot;
+   if(lot<=0.0)return;trade.SetExpertMagicNumber(MagicNumber);trade.SetDeviationInPoints(20);
+   bool ok=false;
+   if(a.state==STATE_BUY)ok=trade.Buy(lot,_Symbol,0,a.sl,a.tp2,"ALT V4.12.3 BUY");
+   if(a.state==STATE_SELL)ok=trade.Sell(lot,_Symbol,0,a.sl,a.tp2,"ALT V4.12.3 SELL");
+   if(!ok)Print("V4.12.3 trade failed: ",trade.ResultRetcode()," ",trade.ResultRetcodeDescription());
+}
+
+void EvaluateClosedBar()
+{
+   Analysis a;CalculateSignal(a);UpdateMarginInfo(a);UpdateGuardian(a);DrawLevels(a);DrawArrow(a);DrawLiveIntelligence(a);DrawPanel(a);AlertForState(a);ExecuteTrade(a);ChartRedraw();
+}
+
+void UpdateLivePanel()
+{
+   Analysis a;CalculateSignal(a);UpdateMarginInfo(a);UpdateGuardian(a);
+   DrawLevels(a);DrawArrow(a);DrawLiveIntelligence(a);
+   if(ShowDashboard)DrawPanel(a);
+   ChartRedraw();
+}
+
+int OnInit()
+{
+   ApplyAssetProfile();
+   hFast=iMA(_Symbol,SignalTF,FastEMA,0,MODE_EMA,PRICE_CLOSE);
+   hSlow=iMA(_Symbol,SignalTF,SlowEMA,0,MODE_EMA,PRICE_CLOSE);
+   hRSI=iRSI(_Symbol,SignalTF,RSIPeriod,PRICE_CLOSE);
+   hATR=iATR(_Symbol,SignalTF,ATRPeriod);
+   hADX=iADXWilder(_Symbol,SignalTF,ADXPeriod);
+   hFractals=iFractals(_Symbol,SignalTF);
+   hFastHTF=iMA(_Symbol,ConfirmTF,FastEMA,0,MODE_EMA,PRICE_CLOSE);
+   hSlowHTF=iMA(_Symbol,ConfirmTF,SlowEMA,0,MODE_EMA,PRICE_CLOSE);
+   hRSIHTF=iRSI(_Symbol,ConfirmTF,RSIPeriod,PRICE_CLOSE);
+   hADXHTF=iADXWilder(_Symbol,ConfirmTF,ADXPeriod);
+   if(hFast==INVALID_HANDLE||hSlow==INVALID_HANDLE||hRSI==INVALID_HANDLE||hATR==INVALID_HANDLE||hADX==INVALID_HANDLE||hFractals==INVALID_HANDLE||hFastHTF==INVALID_HANDLE||hSlowHTF==INVALID_HANDLE||hRSIHTF==INVALID_HANDLE||hADXHTF==INVALID_HANDLE)return INIT_FAILED;
+   DeleteObjects();
+   EventSetTimer(1);
+   lastSignalBar=iTime(_Symbol,SignalTF,0);
+   EvaluateClosedBar();
+   return INIT_SUCCEEDED;
+}
+
+void OnDeinit(const int reason)
+{
+   EventKillTimer();DeleteObjects();
+   if(hFast!=INVALID_HANDLE)IndicatorRelease(hFast);if(hSlow!=INVALID_HANDLE)IndicatorRelease(hSlow);if(hRSI!=INVALID_HANDLE)IndicatorRelease(hRSI);if(hATR!=INVALID_HANDLE)IndicatorRelease(hATR);if(hADX!=INVALID_HANDLE)IndicatorRelease(hADX);if(hFractals!=INVALID_HANDLE)IndicatorRelease(hFractals);if(hFastHTF!=INVALID_HANDLE)IndicatorRelease(hFastHTF);if(hSlowHTF!=INVALID_HANDLE)IndicatorRelease(hSlowHTF);if(hRSIHTF!=INVALID_HANDLE)IndicatorRelease(hRSIHTF);if(hADXHTF!=INVALID_HANDLE)IndicatorRelease(hADXHTF);
+}
+
+void OnTick()
+{
+   datetime bar=iTime(_Symbol,SignalTF,0);
+   if(bar!=lastSignalBar){lastSignalBar=bar;EvaluateClosedBar();}
+   else UpdateLivePanel();
+}
+
+void OnTimer(){UpdateLivePanel();}
