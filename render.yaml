@@ -15,3 +15,16 @@ services:
         value: "2.0.0"
       - key: API_FOOTBALL_KEY
         sync: false
+
+  - type: web
+    name: ai-liquidity-trader-bridge
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn trader_bridge.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13
+      - key: TRADER_BRIDGE_TOKEN
+        sync: false
