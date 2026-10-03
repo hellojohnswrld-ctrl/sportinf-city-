@@ -20,6 +20,16 @@ class StatePayload(BaseModel):
     positions: list[dict[str, Any]] = Field(default_factory=list)
     model_config = {"extra": "allow"}
 
+@app.get("/")
+def root():
+    return {
+        "ok": True,
+        "service": "AI Liquidity Trader Bridge",
+        "version": "2.0.0",
+        "status": "online",
+        "message": "Bridge is online. Use /docs for the API interface."
+    }
+
 class CommandPayload(BaseModel):
     symbol: str = Field(min_length=1, max_length=40)
     action: str = Field(min_length=1, max_length=40)
