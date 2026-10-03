@@ -49,6 +49,12 @@ input double MaxMarginUsePercent=25.0;
 input double MinProjectedMarginLevel=200.0;
 input int MaxOpenTrades=1;
 
+// PRIVATE MOBILE BRIDGE
+input bool BridgeEnabled=false;
+input string BridgeURL="";
+input string BridgeToken="";
+input int BridgePublishIntervalSeconds=2;
+
 // TRADING GUARDIAN: protects the account before an automated trade is allowed
 input bool UseTradingGuardian=true;
 input double MaxDailyLossPercent=3.0;
@@ -105,6 +111,8 @@ datetime lastSignalBar=0;
 datetime lastAlertBar=0;
 string lastAlertKey="";
 datetime lastAlertTime=0;
+datetime lastBridgePublish=0;
+bool mobileTradingEnabled=false;
 color GREEN=clrLimeGreen;
 color RED=clrRed;
 color YELLOW=clrGold;
@@ -1336,9 +1344,145 @@ void UpdateGuardian(Analysis &a)
    CalculateReadiness(a);
 }
 
+string BridgeJsonEscape(string value)
+{
+   StringReplace(value,"\\","\\\\");
+   StringReplace(value,"\"","\\\"");
+   StringReplace(value,"\r"," ");
+   StringReplace(value,"\n"," ");
+   return value;
+}
+
+string BridgeNumber(double value)
+{
+   if(value==EMPTY_VALUE) return "0";
+   return DoubleToString(value,8);
+}
+
+string BridgeEndpoint(string suffix)
+{
+   string base=BridgeURL;
+   StringTrimLeft(base); StringTrimRight(base);
+   return base+suffix;
+}
+
+void BridgeCloseAll()
+{
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i); if(ticket==0) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC)!=MagicNumber) continue;
+      if(PositionGetString(POSITION_SYMBOL)!=_Symbol) continue;
+      trade.SetExpertMagicNumber(MagicNumber);
+      trade.PositionClose(ticket);
+   }
+}
+
+void BridgePollCommands()
+{
+   if(!BridgeEnabled || BridgeURL=="" || BridgeToken=="") return;
+   string url=BridgeEndpoint("/v1/mt5/commands?symbol="+_Symbol);
+   string headers="Authorization: Bearer "+BridgeToken+"\r\n";
+   char data[]; ArrayResize(data,0); char result[]; string responseHeaders="";
+   ResetLastError();
+   int code=WebRequest("GET",url,headers,2500,data,result,responseHeaders);
+   if(code!=200) return;
+   string body=CharArrayToString(result);
+   if(StringFind(body,"\"action\":\"close_all\"")>=0) BridgeCloseAll();
+   if(StringFind(body,"\"action\":\"enable_trading\"")>=0) mobileTradingEnabled=true;
+   if(StringFind(body,"\"action\":\"disable_trading\"")>=0) mobileTradingEnabled=false;
+   if(StringFind(body,"\"action\":\"refresh\"")>=0) lastBridgePublish=0;
+}
+
+void PublishLiveState(const Analysis &a)
+{
+   if(!BridgeEnabled || BridgeURL=="" || BridgeToken=="") return;
+   datetime now=TimeCurrent();
+   if(lastBridgePublish>0 && (now-lastBridgePublish)<MathMax(1,BridgePublishIntervalSeconds)) return;
+   lastBridgePublish=now;
+
+   MqlTick tick; if(!SymbolInfoTick(_Symbol,tick)) return;
+   double price=tick.bid;
+   double p1=a.entry>0?a.entry:price;
+   double move=MathMax(a.atr*0.60,MathAbs(a.tp1-a.entry)*0.35);
+   if(move<=0) move=MathMax(a.atr*0.60,_Point*20.0);
+   double p2=(a.forecastDirection=="BULLISH"?p1+move:(a.forecastDirection=="BEARISH"?p1-move:p1));
+   double buffer=MathMax(a.atr*ForecastZoneATRBuffer,_Point*20.0);
+   double upper=MathMax(p1,p2)+buffer;
+   double lower=MathMin(p1,p2)-buffer;
+
+   string json="{";
+   json+="\"version\":\"4.12.4\",";
+   json+="\"timestamp\":"+IntegerToString((long)now)+",";
+   json+="\"symbol\":\""+BridgeJsonEscape(_Symbol)+"\",";
+   json+="\"asset\":\""+BridgeJsonEscape(assetName)+"\",";
+   json+="\"state\":\""+(a.state==STATE_BUY?"BUY":(a.state==STATE_SELL?"SELL":"WAIT"))+"\",";
+   json+="\"bias\":\""+BridgeJsonEscape(a.bias)+"\",";
+   json+="\"strength\":"+IntegerToString(a.strength)+",";
+   json+="\"entry\":"+BridgeNumber(a.entry)+",";
+   json+="\"sl\":"+BridgeNumber(a.sl)+",";
+   json+="\"tp1\":"+BridgeNumber(a.tp1)+",";
+   json+="\"tp2\":"+BridgeNumber(a.tp2)+",";
+   json+="\"forecastDirection\":\""+BridgeJsonEscape(a.forecastDirection)+"\",";
+   json+="\"forecastPath\":\""+BridgeJsonEscape(a.forecastPath)+"\",";
+   json+="\"forecastConfidence\":"+IntegerToString(a.forecastConfidence)+",";
+   json+="\"forecastMinutes\":"+IntegerToString(ForecastMinutes)+",";
+   json+="\"forecastExpiry\":"+IntegerToString((long)a.forecastExpiry)+",";
+   json+="\"forecastPrice\":"+BridgeNumber(p2)+",";
+   json+="\"forecastUpper\":"+BridgeNumber(upper)+",";
+   json+="\"forecastLower\":"+BridgeNumber(lower)+",";
+   json+="\"price\":"+BridgeNumber(price)+",";
+   json+="\"rsi\":"+BridgeNumber(a.rsi)+",";
+   json+="\"adx\":"+BridgeNumber(a.adx)+",";
+   json+="\"liquidity\":\""+BridgeJsonEscape(a.liquidity)+"\",";
+   json+="\"structure\":\""+BridgeJsonEscape(a.structure)+"\",";
+   json+="\"fvg\":\""+BridgeJsonEscape(a.fvg)+"\",";
+   json+="\"guardian\":\""+BridgeJsonEscape(a.guardianOK?"OK":a.guardianReason)+"\",";
+   json+="\"marginLevel\":"+BridgeNumber(a.marginLevel)+",";
+   json+="\"equity\":"+BridgeNumber(a.equity)+",";
+   json+="\"balance\":"+BridgeNumber(a.balance)+",";
+   json+="\"freeMargin\":"+BridgeNumber(a.freeMargin)+",";
+   json+="\"marketDirection\":\""+BridgeJsonEscape(a.trend)+"\",";
+   json+="\"readiness\":"+IntegerToString(a.readiness)+",";
+   json+="\"mobileTradingEnabled\":"+(mobileTradingEnabled?"true":"false")+",";
+
+   json+="\"positions\":[";
+   int pc=0;
+   for(int i=PositionsTotal()-1;i>=0 && pc<20;i--)
+   {
+      ulong ticket=PositionGetTicket(i); if(ticket==0) continue;
+      if(PositionGetString(POSITION_SYMBOL)!=_Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC)!=MagicNumber) continue;
+      if(pc>0) json+=",";
+      json+="{\"ticket\":"+IntegerToString((long)ticket)+",\"type\":\""+(PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY?"BUY":"SELL")+"\",\"volume\":"+BridgeNumber(PositionGetDouble(POSITION_VOLUME))+",\"open\":"+BridgeNumber(PositionGetDouble(POSITION_PRICE_OPEN))+",\"sl\":"+BridgeNumber(PositionGetDouble(POSITION_SL))+",\"tp\":"+BridgeNumber(PositionGetDouble(POSITION_TP))+",\"profit\":"+BridgeNumber(PositionGetDouble(POSITION_PROFIT))+"}";
+      pc++;
+   }
+   json+="],";
+
+   json+="\"chart\":[";
+   int bars=MathMin(60,Bars(_Symbol,PERIOD_M1));
+   int written=0;
+   for(int i=bars-1;i>=0;i--)
+   {
+      datetime bt=iTime(_Symbol,PERIOD_M1,i); double o=iOpen(_Symbol,PERIOD_M1,i),h=iHigh(_Symbol,PERIOD_M1,i),l=iLow(_Symbol,PERIOD_M1,i),cl=iClose(_Symbol,PERIOD_M1,i);
+      if(bt<=0 || o<=0 || h<=0 || l<=0 || cl<=0) continue;
+      if(written>0) json+=",";
+      json+="{\"t\":"+IntegerToString((long)bt)+",\"o\":"+BridgeNumber(o)+",\"h\":"+BridgeNumber(h)+",\"l\":"+BridgeNumber(l)+",\"c\":"+BridgeNumber(cl)+",\"p\":"+BridgeNumber(cl)+"}";
+      written++;
+   }
+   json+="]}";
+
+   char data[]; int size=StringToCharArray(json,data,0,WHOLE_ARRAY,CP_UTF8); if(size>0) ArrayResize(data,size-1);
+   char result[]; string responseHeaders="";
+   string headers="Content-Type: application/json\r\nAuthorization: Bearer "+BridgeToken+"\r\n";
+   ResetLastError();
+   int code=WebRequest("POST",BridgeEndpoint("/v1/mt5/state"),headers,2500,data,result,responseHeaders);
+   if(code<200 || code>=300) Print("Bridge publish failed HTTP=",code," err=",GetLastError());
+}
+
 void ExecuteTrade(const Analysis &a)
 {
-   if(!AllowAlgoTrading||a.state==STATE_WAIT||a.newsBlocked||!a.spreadOK||!a.marginOK||!a.guardianOK||OpenPositions()>=MaxOpenTrades)return;
+   if(!AllowAlgoTrading||!mobileTradingEnabled||a.state==STATE_WAIT||a.newsBlocked||!a.spreadOK||!a.marginOK||!a.guardianOK||OpenPositions()>=MaxOpenTrades)return;
    double lot=a.lot;
    if(lot<=0.0)return;trade.SetExpertMagicNumber(MagicNumber);trade.SetDeviationInPoints(20);
    bool ok=false;
@@ -1354,9 +1498,11 @@ void EvaluateClosedBar()
 
 void UpdateLivePanel()
 {
+   BridgePollCommands();
    Analysis a;CalculateSignal(a);UpdateMarginInfo(a);UpdateGuardian(a);
    DrawLevels(a);DrawArrow(a);DrawLiveIntelligence(a);
    if(ShowDashboard)DrawPanel(a);
+   PublishLiveState(a);
    ChartRedraw();
 }
 
