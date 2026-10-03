@@ -1363,6 +1363,7 @@ string BridgeEndpoint(string suffix)
 {
    string base=BridgeURL;
    StringTrimLeft(base); StringTrimRight(base);
+   StringReplace(base,"/v1/mt5/state","");
    return base+suffix;
 }
 
