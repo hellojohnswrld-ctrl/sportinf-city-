@@ -16,6 +16,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'
+      - name: Bundle Lightweight Charts 5.2.1
+        working-directory: mobile
+        run: |
+          mkdir -p app/src/main/assets
+          curl -fL --retry 3 --retry-all-errors https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js -o app/src/main/assets/lightweight-charts.standalone.production.js
       - name: Build APK
         working-directory: mobile
         run: gradle assembleDebug
