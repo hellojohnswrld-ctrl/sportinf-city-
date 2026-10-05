@@ -1,0 +1,6 @@
+AI Liquidity Trader includes TradingView Lightweight Charts™ 5.2.1.
+
+TradingView Lightweight Charts™
+Copyright (c) 2025 TradingView, Inc. https://www.tradingview.com/
+
+Lightweight Charts is licensed under the Apache License 2.0. The full Apache License 2.0 text is available from the Lightweight Charts project.
