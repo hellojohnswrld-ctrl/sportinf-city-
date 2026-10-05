@@ -18,6 +18,9 @@ import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -56,7 +59,9 @@ public class MainActivity extends Activity {
     LinearLayout root;
     TextView state, strength, forecast, entry, guardian, account, positions, connection, symbolView, mobileMode;
     EditText symbolInput, tokenInput;
-    LiveChartView chartView;
+    WebView chartView;
+    boolean chartReady=false;
+    String pendingChartJson=null;
     ScheduledExecutorService executor;
     SharedPreferences prefs;
     String lastState = "";
@@ -136,9 +141,25 @@ public class MainActivity extends Activity {
         mobileMode = card("MOBILE TRADE GATE", "PAUSED");
         positions = card("OPEN POSITIONS", "None");
 
-        chartView = new LiveChartView();
-        LinearLayout.LayoutParams chartLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(300));
-        chartLp.setMargins(0,dp(8),0,dp(8)); root.addView(chartView, chartLp);
+        chartView = new WebView(this);
+        chartView.setBackgroundColor(Color.rgb(12,17,25));
+        WebSettings ws = chartView.getSettings();
+        ws.setJavaScriptEnabled(true);
+        ws.setDomStorageEnabled(true);
+        ws.setLoadWithOverviewMode(true);
+        ws.setUseWideViewPort(true);
+        chartView.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView view, String url) {
+                chartReady = true;
+                if (pendingChartJson != null) {
+                    pushChartJson(pendingChartJson);
+                    pendingChartJson = null;
+                }
+            }
+        });
+        chartView.loadUrl("file:///android_asset/chart.html");
+        LinearLayout.LayoutParams chartLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360));
+        chartLp.setMargins(0,dp(8),0,dp(8)); root.addView(chartView, 1, chartLp);
 
         root.addView(text("MT5 remains the trading engine. Mobile commands are safety-gated by the EA; trading stays paused until explicitly enabled.",12,Color.LTGRAY));
         scroll.addView(root); setContentView(scroll);
@@ -171,7 +192,11 @@ public class MainActivity extends Activity {
             StringBuilder b=new StringBuilder(); String line; while((line=r.readLine())!=null)b.append(line);
             JSONObject j=new JSONObject(b.toString()); runOnUiThread(() -> render(j)); c.disconnect();
         } catch(Exception e) {
-            runOnUiThread(() -> { connection.setText("● BRIDGE OFFLINE / NO MT5 DATA"); connection.setTextColor(Color.rgb(255,92,102)); });
+            runOnUiThread(() -> {
+                String msg = e.getMessage()==null ? "network error" : e.getMessage();
+                connection.setText("● BRIDGE ERROR • "+msg);
+                connection.setTextColor(Color.rgb(255,92,102));
+            });
         }
     }
 
@@ -209,10 +234,20 @@ public class MainActivity extends Activity {
         mobileMode.setText("MOBILE TRADE GATE\n"+(enabled?"ENABLED":"PAUSED"));
         mobileMode.setTextColor(enabled?Color.rgb(255,209,102):Color.LTGRAY);
         renderPositions(j.optJSONArray("positions"));
-        chartView.setData(j);
+        renderChart(j);
         long ts=j.optLong("timestamp",0);
         if(ts!=lastSignalTimestamp && !lastState.isEmpty() && !s.equals(lastState)) notifySignal(j);
         lastSignalTimestamp=ts; lastState=s;
+    }
+
+    void renderChart(JSONObject j) {
+        String payload = j.toString();
+        if (!chartReady) { pendingChartJson = payload; return; }
+        pushChartJson(payload);
+    }
+
+    void pushChartJson(String payload) {
+        chartView.evaluateJavascript("window.setChartData("+payload+");", null);
     }
 
     void renderPositions(JSONArray a) {
@@ -290,26 +325,5 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy(){ if(executor!=null)executor.shutdownNow(); super.onDestroy(); }
 
-    class LiveChartView extends View {
-        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG); Paint line=new Paint(Paint.ANTI_ALIAS_FLAG);
-        List<Double> opens=new ArrayList<>(), highs=new ArrayList<>(), lows=new ArrayList<>(), closes=new ArrayList<>();
-        String direction="NEUTRAL"; double upper,lower,target; int confidence;
-        LiveChartView(){ super(MainActivity.this); setBackgroundColor(Color.rgb(12,17,25)); }
-        void setData(JSONObject j){
-            opens.clear(); highs.clear(); lows.clear(); closes.clear();
-            try{ JSONArray a=j.optJSONArray("chart"); if(a!=null) for(int i=0;i<a.length();i++){JSONObject q=a.getJSONObject(i); opens.add(q.optDouble("o",q.optDouble("p"))); highs.add(q.optDouble("h",q.optDouble("p"))); lows.add(q.optDouble("l",q.optDouble("p"))); closes.add(q.optDouble("c",q.optDouble("p")));}}catch(Exception ignored){}
-            direction=j.optString("forecastDirection","NEUTRAL"); upper=j.optDouble("forecastUpper",0); lower=j.optDouble("forecastLower",0); target=j.optDouble("forecastPrice",0); confidence=j.optInt("forecastConfidence",0); invalidate();
-        }
-        @Override protected void onDraw(Canvas c){
-            super.onDraw(c); if(closes.size()<2){p.setColor(Color.LTGRAY);p.setTextSize(dp(12));c.drawText("Waiting for live MT5 chart data…",dp(14),dp(32),p);return;}
-            double min=lows.get(0),max=highs.get(0); for(int i=0;i<closes.size();i++){min=Math.min(min,lows.get(i));max=Math.max(max,highs.get(i));}
-            if(upper>0)max=Math.max(max,upper);if(lower>0)min=Math.min(min,lower);double pad=(max-min)*0.08;if(pad<=0)pad=1;min-=pad;max+=pad;
-            float w=getWidth(),h=getHeight(); float step=(w-24)/Math.max(1,closes.size()-1);
-            if(!direction.equals("NEUTRAL")&&upper>0&&lower>0){p.setColor(direction.equals("BULLISH")?Color.argb(40,53,208,127):Color.argb(40,255,92,102));float y1=map(upper,min,max,h),y2=map(lower,min,max,h);c.drawRect(12,Math.min(y1,y2),w-12,Math.max(y1,y2),p);}
-            for(int i=0;i<closes.size();i++){float x=12+i*step;float yo=map(opens.get(i),min,max,h),yh=map(highs.get(i),min,max,h),yl=map(lows.get(i),min,max,h),yc=map(closes.get(i),min,max,h);boolean up=closes.get(i)>=opens.get(i);p.setColor(up?Color.rgb(53,208,127):Color.rgb(255,92,102));p.setStrokeWidth(1);c.drawLine(x,yh,x,yl,p);float bw=Math.max(2,step*.55f);c.drawRect(x-bw/2,Math.min(yo,yc),x+bw/2,Math.max(yo,yc),p);}
-            if(target>0){line.setColor(Color.LTGRAY);line.setStrokeWidth(1);c.drawLine(12,map(target,min,max,h),w-12,map(target,min,max,h),line);}
-            p.setColor(Color.WHITE);p.setTextSize(dp(12));c.drawText("LIVE M1 • "+direction+" "+confidence+"%",dp(12),dp(18),p);
-        }
-        float map(double value,double min,double max,float h){return h-20-(float)((value-min)/(max-min)*(h-40));}
-    }
+    @Override protected void onDestroy(){ if(executor!=null)executor.shutdownNow(); if(chartView!=null)chartView.destroy(); super.onDestroy(); }
 }
