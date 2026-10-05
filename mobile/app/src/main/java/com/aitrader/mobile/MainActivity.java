@@ -50,7 +50,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends Activity {
-    static final String APP_VERSION = "2.0.0";
+    static final String APP_VERSION = "2.2.0";
     static final String API_BASE_URL = "https://ai-liquidity-trader-bridge-v2.onrender.com";
     static final String PREFS = "ai_liquidity_trader";
     static final String KEY_ALIAS = "ai_liquidity_trader_token";
@@ -112,7 +112,7 @@ public class MainActivity extends Activity {
         config.addView(tokenInput, new LinearLayout.LayoutParams(0, dp(54), 0.66f)); root.addView(config);
 
         Button connect = new Button(this); connect.setText("CONNECT LIVE MT5");
-        connect.setOnClickListener(v -> { saveConfig(); pollOnce(); }); root.addView(connect);
+        connect.setOnClickListener(v -> { saveConfig(); if (executor != null) executor.execute(this::pollOnce); }); root.addView(connect);
 
         LinearLayout controls = new LinearLayout(this); controls.setOrientation(LinearLayout.HORIZONTAL);
         Button enable = new Button(this); enable.setText("ENABLE");
@@ -181,8 +181,13 @@ public class MainActivity extends Activity {
 
     void pollOnce() {
         String sym=symbol(), tok=token();
-        if (sym.isEmpty() || tok.isEmpty()) {
-            runOnUiThread(() -> connection.setText("● SET SYMBOL + PRIVATE TOKEN")); return;
+        if (tok.isEmpty()) {
+            runOnUiThread(() -> connection.setText("● SET PRIVATE TOKEN")); return;
+        }
+        if (sym.isEmpty()) {
+            String resolved = discoverSymbol(tok, "");
+            if (resolved == null) return;
+            sym = resolved;
         }
         try {
             URL u = new URL(API_BASE_URL + "/v1/mobile/state?symbol=" + URLEncoder.encode(sym, "UTF-8"));
@@ -190,9 +195,16 @@ public class MainActivity extends Activity {
             c.setRequestProperty("Authorization","Bearer "+tok); c.setConnectTimeout(5000); c.setReadTimeout(5000);
             int code=c.getResponseCode();
             if(code<200 || code>=300) {
-                String msg = code==401 ? "AUTH ERROR" : (code==404 ? "NO MT5 DATA FOR SYMBOL" : "HTTP "+code);
                 c.disconnect();
-                final String status=msg;
+                if(code==404) {
+                    String resolved = discoverSymbol(tok, sym);
+                    if(resolved != null && !resolved.equalsIgnoreCase(sym)) {
+                        runOnUiThread(() -> symbolInput.setText(resolved));
+                        pollOnce();
+                        return;
+                    }
+                }
+                final String status=code==401 ? "AUTH ERROR" : (code==404 ? "NO MT5 DATA • CHECK SYMBOL" : "HTTP "+code);
                 runOnUiThread(() -> { connection.setText("● "+status); connection.setTextColor(Color.rgb(255,92,102)); });
                 return;
             }
@@ -205,6 +217,54 @@ public class MainActivity extends Activity {
                 connection.setText("● BRIDGE ERROR • "+msg);
                 connection.setTextColor(Color.rgb(255,92,102));
             });
+        }
+    }
+
+    String discoverSymbol(String tok, String requested) {
+        try {
+            URL u = new URL(API_BASE_URL + "/v1/mobile/symbols");
+            HttpURLConnection c = (HttpURLConnection)u.openConnection();
+            c.setRequestProperty("Authorization","Bearer "+tok);
+            c.setConnectTimeout(5000); c.setReadTimeout(5000);
+            int code=c.getResponseCode();
+            if(code<200 || code>=300) {
+                final String status=code==401 ? "AUTH ERROR" : "SYMBOL DISCOVERY HTTP "+code;
+                runOnUiThread(() -> { connection.setText("● "+status); connection.setTextColor(Color.rgb(255,92,102)); });
+                c.disconnect(); return null;
+            }
+            BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream()));
+            StringBuilder b=new StringBuilder(); String line;
+            while((line=r.readLine())!=null)b.append(line);
+            c.disconnect();
+            JSONArray a=new JSONObject(b.toString()).optJSONArray("symbols");
+            if(a==null || a.length()==0) {
+                runOnUiThread(() -> { connection.setText("● WAITING FOR MT5 SYMBOL"); connection.setTextColor(Color.YELLOW); });
+                return null;
+            }
+            String q=requested==null?"":requested.trim();
+            String exact=null, partial=null; int partialCount=0;
+            for(int i=0;i<a.length();i++) {
+                String candidate=a.optString(i,"").trim();
+                if(candidate.isEmpty()) continue;
+                if(candidate.equalsIgnoreCase(q)) exact=candidate;
+                if(!q.isEmpty() && candidate.toLowerCase().contains(q.toLowerCase())) {
+                    partial=candidate; partialCount++;
+                }
+            }
+            String resolved=exact!=null?exact:(partialCount==1?partial:null);
+            if(resolved==null && q.isEmpty()) resolved=a.optString(0,"").trim();
+            if(resolved!=null && !resolved.isEmpty()) {
+                prefs.edit().putString("symbol",resolved).apply();
+                final String chosen=resolved;
+                runOnUiThread(() -> { symbolInput.setText(chosen); connection.setText("● SYMBOL AUTO-DETECTED • "+chosen); });
+                return resolved;
+            }
+            final String msg=q.isEmpty() ? "NO MT5 SYMBOLS" : "NO MATCH FOR "+q;
+            runOnUiThread(() -> { connection.setText("● "+msg); connection.setTextColor(Color.rgb(255,209,102)); });
+            return null;
+        } catch(Exception e) {
+            runOnUiThread(() -> { connection.setText("● SYMBOL DISCOVERY ERROR"); connection.setTextColor(Color.rgb(255,92,102)); });
+            return null;
         }
     }
 
