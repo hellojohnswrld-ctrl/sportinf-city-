@@ -331,7 +331,5 @@ public class MainActivity extends Activity {
 
     byte[] join(byte[] a,byte[] b){ byte[] out=new byte[a.length+b.length]; System.arraycopy(a,0,out,0,a.length); System.arraycopy(b,0,out,a.length,b.length); return out; }
 
-    @Override protected void onDestroy(){ if(executor!=null)executor.shutdownNow(); super.onDestroy(); }
-
     @Override protected void onDestroy(){ if(executor!=null)executor.shutdownNow(); if(chartView!=null)chartView.destroy(); super.onDestroy(); }
 }
