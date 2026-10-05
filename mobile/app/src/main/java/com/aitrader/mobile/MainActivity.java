@@ -188,6 +188,14 @@ public class MainActivity extends Activity {
             URL u = new URL(API_BASE_URL + "/v1/mobile/state?symbol=" + URLEncoder.encode(sym, "UTF-8"));
             HttpURLConnection c=(HttpURLConnection)u.openConnection();
             c.setRequestProperty("Authorization","Bearer "+tok); c.setConnectTimeout(5000); c.setReadTimeout(5000);
+            int code=c.getResponseCode();
+            if(code<200 || code>=300) {
+                String msg = code==401 ? "AUTH ERROR" : (code==404 ? "NO MT5 DATA FOR SYMBOL" : "HTTP "+code);
+                c.disconnect();
+                final String status=msg;
+                runOnUiThread(() -> { connection.setText("● "+status); connection.setTextColor(Color.rgb(255,92,102)); });
+                return;
+            }
             BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream()));
             StringBuilder b=new StringBuilder(); String line; while((line=r.readLine())!=null)b.append(line);
             JSONObject j=new JSONObject(b.toString()); runOnUiThread(() -> render(j)); c.disconnect();
