@@ -38,6 +38,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -52,12 +58,15 @@ jobs:
           curl -fL --retry 3 --retry-all-errors https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js -o app/src/main/assets/lightweight-charts.standalone.production.js
           grep -q "Lightweight Charts™ v5.2.1" app/src/main/assets/lightweight-charts.standalone.production.js
       - name: Run Android emulator smoke tests
-        timeout-minutes: 12
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
-          profile: pixel_2
+          profile: pixel_5
+          force-avd-creation: true
+          emulator-boot-timeout: 900
           disable-animations: true
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: gradle connectedDebugAndroidTest
