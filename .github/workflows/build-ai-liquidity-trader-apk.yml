@@ -1,7 +1,7 @@
 name: Build and Verify AI Liquidity Trader APK
 on:
   push:
-    branches: [ mobile-app-update-ready, main ]
+    branches: [ apk-release-verification, mobile-app-update-ready, main ]
   workflow_dispatch:
   pull_request:
     branches: [ main ]
