@@ -2,6 +2,7 @@ package com.aitrader.mobile;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -351,6 +352,7 @@ public class MainActivity extends Activity {
     }
 
     void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 30 && ActivityManager.isRunningInUserTestHarness()) return;
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
     }
