@@ -52,6 +52,7 @@ jobs:
           curl -fL --retry 3 --retry-all-errors https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js -o app/src/main/assets/lightweight-charts.standalone.production.js
           grep -q "Lightweight Charts™ v5.2.1" app/src/main/assets/lightweight-charts.standalone.production.js
       - name: Run Android emulator smoke tests
+        timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
