@@ -203,19 +203,20 @@ public class MainActivity extends Activity {
         if (pollInFlight) return;
         pollInFlight = true;
         try {
-        String sym=symbol(), tok=token();
-        if (tok.isEmpty()) {
-            runOnUiThread(() -> connection.setText("● SET PRIVATE TOKEN")); return;
-        }
-        if (sym.isEmpty()) {
-            String resolved = discoverSymbol(tok, "");
-            if (resolved == null) return;
-            sym = resolved;
-        }
-        try {
+            String sym=symbol(), tok=token();
+            if (tok.isEmpty()) {
+                runOnUiThread(() -> connection.setText("● SET PRIVATE TOKEN"));
+                return;
+            }
+            if (sym.isEmpty()) {
+                String resolved = discoverSymbol(tok, "");
+                if (resolved == null) return;
+                sym = resolved;
+            }
             URL u = new URL(API_BASE_URL + "/v1/mobile/state?symbol=" + URLEncoder.encode(sym, "UTF-8"));
             HttpURLConnection c=(HttpURLConnection)u.openConnection();
-            c.setRequestProperty("Authorization","Bearer "+tok); c.setConnectTimeout(5000); c.setReadTimeout(5000);
+            c.setRequestProperty("Authorization","Bearer "+tok);
+            c.setConnectTimeout(5000); c.setReadTimeout(5000);
             int code=c.getResponseCode();
             if(code<200 || code>=300) {
                 c.disconnect();
@@ -231,8 +232,11 @@ public class MainActivity extends Activity {
                 return;
             }
             BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream()));
-            StringBuilder b=new StringBuilder(); String line; while((line=r.readLine())!=null)b.append(line);
-            JSONObject j=new JSONObject(b.toString()); runOnUiThread(() -> render(j)); c.disconnect();
+            StringBuilder body=new StringBuilder();
+            String line; while((line=r.readLine())!=null) body.append(line);
+            r.close(); c.disconnect();
+            JSONObject j=new JSONObject(body.toString());
+            runOnUiThread(() -> render(j));
         } catch(Exception e) {
             runOnUiThread(() -> {
                 String msg = e.getMessage()==null ? "network error" : e.getMessage();
@@ -242,7 +246,6 @@ public class MainActivity extends Activity {
         } finally {
             pollInFlight = false;
         }
-        } // poll lock
     }
 
     String discoverSymbol(String tok, String requested) {
