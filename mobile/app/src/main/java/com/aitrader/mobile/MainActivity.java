@@ -51,7 +51,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends Activity {
-    static final String APP_VERSION = "2.2.0";
+    static final String APP_VERSION = "2.3.1";
     static final String API_BASE_URL = "https://ai-liquidity-trader-bridge-v2.onrender.com";
     static final String PREFS = "ai_liquidity_trader";
     static final String KEY_ALIAS = "ai_liquidity_trader_token";
