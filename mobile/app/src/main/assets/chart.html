@@ -18,7 +18,7 @@ let chart, candles, upperLine, lowerLine, targetLine;
 let ready=false;
 
 function boot(){
-  if(!window.LightweightCharts) return;
+  if(!window.LightweightCharts){setTimeout(boot,150);return;}
   chart=LightweightCharts.createChart(document.getElementById('chart'),{
     width:document.getElementById('chart').clientWidth,
     height:document.getElementById('chart').clientHeight,
@@ -56,9 +56,14 @@ window.setChartData=function(j){
   const a=j.chart||[];
   const data=[];
   for(const q of a){
-    if(!q.t) continue;
-    data.push({time:Number(q.t),open:Number(q.o),high:Number(q.h),low:Number(q.l),close:Number(q.c)});
+    const t=Number(q.t), o=Number(q.o), h=Number(q.h), l=Number(q.l), c=Number(q.c);
+    if(!Number.isFinite(t)||!Number.isFinite(o)||!Number.isFinite(h)||!Number.isFinite(l)||!Number.isFinite(c)||t<=0) continue;
+    data.push({time:t,open:o,high:h,low:l,close:c});
   }
+  data.sort((x,y)=>x.time-y.time);
+  const unique=[];
+  for(const x of data) if(!unique.length || unique[unique.length-1].time!==x.time) unique.push(x);
+  data.length=0; data.push(...unique);
   if(!data.length){
     document.getElementById('status').textContent='TRADINGVIEW • no M1 data from MT5';
     return;
