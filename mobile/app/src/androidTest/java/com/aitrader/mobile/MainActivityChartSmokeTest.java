@@ -16,55 +16,62 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @RunWith(AndroidJUnit4.class)
 public class MainActivityChartSmokeTest {
+    private String evaluate(ActivityScenario<MainActivity> scenario, String javascript) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> result = new AtomicReference<>("");
+        scenario.onActivity(activity -> activity.chartView.evaluateJavascript(javascript, value -> {
+            result.set(value == null ? "" : value);
+            done.countDown();
+        }));
+        assertTrue("WebView JavaScript evaluation timed out", done.await(2, TimeUnit.SECONDS));
+        return result.get();
+    }
+
+    private String waitForChart(ActivityScenario<MainActivity> scenario) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        String value = "";
+        while (System.nanoTime() < deadline) {
+            value = evaluate(scenario,
+                    "(typeof LightweightCharts)+'|'+(typeof window.setChartData)+'|'+document.getElementById('status').textContent");
+            if (value.contains("object") && value.contains("function")) return value;
+            Thread.sleep(150);
+        }
+        return value;
+    }
+
     @Test
     public void launchesAndInitializesLocalTradingViewChart() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            CountDownLatch ready = new CountDownLatch(1);
-            AtomicReference<String> result = new AtomicReference<>("");
-
-            scenario.onActivity(activity -> {
-                WebView webView = activity.chartView;
-                webView.evaluateJavascript(
-                        "(typeof LightweightCharts)+ '|' + (typeof window.setChartData)+ '|' + document.getElementById('status').textContent",
-                        value -> {
-                            result.set(value);
-                            ready.countDown();
-                        });
-            });
-
-            assertTrue("WebView chart did not initialize", ready.await(10, TimeUnit.SECONDS));
-            String value = result.get();
-            assertTrue("Lightweight Charts library missing: " + value, value.contains("object"));
-            assertTrue("setChartData bridge missing: " + value, value.contains("function"));
+            String value = waitForChart(scenario);
+            assertTrue("Lightweight Charts library missing after waiting for WebView load: " + value,
+                    value.contains("object"));
+            assertTrue("setChartData bridge missing after waiting for WebView load: " + value,
+                    value.contains("function"));
         }
     }
 
     @Test
     public void chartAcceptsM1DataAndUpdatesStatus() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            CountDownLatch ready = new CountDownLatch(1);
-            AtomicReference<String> result = new AtomicReference<>("");
+            String initial = waitForChart(scenario);
+            assertTrue("Chart dependencies did not load: " + initial,
+                    initial.contains("object") && initial.contains("function"));
 
-            scenario.onActivity(activity -> {
-                WebView webView = activity.chartView;
-                String js =
-                        "(function(){"
-                        + "if(typeof LightweightCharts!=='object'||typeof window.setChartData!=='function') return 'NOT_READY';"
-                        + "window.setChartData({"
-                        + "chart:[{t:1730000000,o:100,h:102,l:99,c:101},{t:1730000060,o:101,h:103,l:100,c:102}],"
-                        + "forecastDirection:'BUY',forecastConfidence:82,forecastUpper:105,forecastLower:98,forecastPrice:104"
-                        + "});"
-                        + "return document.getElementById('status').textContent;"
-                        + "})()";
-                webView.evaluateJavascript(js, value -> {
-                    result.set(value);
-                    ready.countDown();
-                });
-            });
+            evaluate(scenario,
+                    "window.setChartData({"
+                    + "chart:[{t:1730000000,o:100,h:102,l:99,c:101},{t:1730000060,o:101,h:103,l:100,c:102}],"
+                    + "forecastDirection:'BUY',forecastConfidence:82,forecastUpper:105,forecastLower:98,forecastPrice:104"
+                    + "}); 'submitted'");
 
-            assertTrue("Chart data call timed out", ready.await(10, TimeUnit.SECONDS));
-            assertTrue("Chart did not accept live-style data: " + result.get(), result.get().contains("BUY"));
-            assertTrue("Chart status did not show confidence: " + result.get(), result.get().contains("82"));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            String status = "";
+            while (System.nanoTime() < deadline) {
+                status = evaluate(scenario, "document.getElementById('status').textContent");
+                if (status.contains("BUY") && status.contains("82")) break;
+                Thread.sleep(150);
+            }
+            assertTrue("Chart did not accept live-style data: " + status, status.contains("BUY"));
+            assertTrue("Chart status did not show confidence: " + status, status.contains("82"));
         }
     }
 }
