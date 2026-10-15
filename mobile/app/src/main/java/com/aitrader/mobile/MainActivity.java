@@ -2,6 +2,7 @@ package com.aitrader.mobile;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -21,6 +22,7 @@ import android.view.ViewGroup;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.webkit.WebViewAssetLoader;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -50,7 +52,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends Activity {
-    static final String APP_VERSION = "2.2.0";
+    static final String APP_VERSION = "2.3.1";
     static final String API_BASE_URL = "https://ai-liquidity-trader-bridge-v2.onrender.com";
     static final String PREFS = "ai_liquidity_trader";
     static final String KEY_ALIAS = "ai_liquidity_trader_token";
@@ -66,6 +68,7 @@ public class MainActivity extends Activity {
     SharedPreferences prefs;
     String lastState = "";
     long lastSignalTimestamp = 0;
+    volatile boolean pollInFlight = false;
 
     int dp(int n) { return (int)(n * getResources().getDisplayMetrics().density + .5f); }
 
@@ -88,7 +91,6 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         createNotificationChannel();
         build();
-        startPolling();
     }
 
     void build() {
@@ -148,7 +150,16 @@ public class MainActivity extends Activity {
         ws.setDomStorageEnabled(true);
         ws.setLoadWithOverviewMode(true);
         ws.setUseWideViewPort(true);
+        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
         chartView.setWebViewClient(new WebViewClient() {
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
+                return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+                return assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
+            }
             @Override public void onPageFinished(WebView view, String url) {
                 chartReady = true;
                 if (pendingChartJson != null) {
@@ -157,7 +168,7 @@ public class MainActivity extends Activity {
                 }
             }
         });
-        chartView.loadUrl("file:///android_asset/chart.html");
+        chartView.loadUrl("https://appassets.androidplatform.net/assets/chart.html");
         LinearLayout.LayoutParams chartLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360));
         chartLp.setMargins(0,dp(8),0,dp(8)); root.addView(chartView, 1, chartLp);
 
@@ -175,24 +186,37 @@ public class MainActivity extends Activity {
     String token() { return tokenInput.getText().toString().trim(); }
 
     void startPolling() {
+        if (executor != null && !executor.isShutdown()) return;
         executor = Executors.newSingleThreadScheduledExecutor();
-        executor.scheduleAtFixedRate(this::pollOnce, 1, 2, TimeUnit.SECONDS);
+        executor.scheduleAtFixedRate(this::pollOnce, 0, 2, TimeUnit.SECONDS);
+    }
+
+    void stopPolling() {
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
+        }
+        pollInFlight = false;
     }
 
     void pollOnce() {
-        String sym=symbol(), tok=token();
-        if (tok.isEmpty()) {
-            runOnUiThread(() -> connection.setText("● SET PRIVATE TOKEN")); return;
-        }
-        if (sym.isEmpty()) {
-            String resolved = discoverSymbol(tok, "");
-            if (resolved == null) return;
-            sym = resolved;
-        }
+        if (pollInFlight) return;
+        pollInFlight = true;
         try {
+            String sym=symbol(), tok=token();
+            if (tok.isEmpty()) {
+                runOnUiThread(() -> connection.setText("● SET PRIVATE TOKEN"));
+                return;
+            }
+            if (sym.isEmpty()) {
+                String resolved = discoverSymbol(tok, "");
+                if (resolved == null) return;
+                sym = resolved;
+            }
             URL u = new URL(API_BASE_URL + "/v1/mobile/state?symbol=" + URLEncoder.encode(sym, "UTF-8"));
             HttpURLConnection c=(HttpURLConnection)u.openConnection();
-            c.setRequestProperty("Authorization","Bearer "+tok); c.setConnectTimeout(5000); c.setReadTimeout(5000);
+            c.setRequestProperty("Authorization","Bearer "+tok);
+            c.setConnectTimeout(5000); c.setReadTimeout(5000);
             int code=c.getResponseCode();
             if(code<200 || code>=300) {
                 c.disconnect();
@@ -200,7 +224,6 @@ public class MainActivity extends Activity {
                     String resolved = discoverSymbol(tok, sym);
                     if(resolved != null && !resolved.equalsIgnoreCase(sym)) {
                         runOnUiThread(() -> symbolInput.setText(resolved));
-                        pollOnce();
                         return;
                     }
                 }
@@ -209,14 +232,19 @@ public class MainActivity extends Activity {
                 return;
             }
             BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream()));
-            StringBuilder b=new StringBuilder(); String line; while((line=r.readLine())!=null)b.append(line);
-            JSONObject j=new JSONObject(b.toString()); runOnUiThread(() -> render(j)); c.disconnect();
+            StringBuilder body=new StringBuilder();
+            String line; while((line=r.readLine())!=null) body.append(line);
+            r.close(); c.disconnect();
+            JSONObject j=new JSONObject(body.toString());
+            runOnUiThread(() -> render(j));
         } catch(Exception e) {
             runOnUiThread(() -> {
                 String msg = e.getMessage()==null ? "network error" : e.getMessage();
                 connection.setText("● BRIDGE ERROR • "+msg);
                 connection.setTextColor(Color.rgb(255,92,102));
             });
+        } finally {
+            pollInFlight = false;
         }
     }
 
@@ -271,7 +299,9 @@ public class MainActivity extends Activity {
     void sendCommand(String action) {
         saveConfig(); String sym=symbol(), tok=token();
         if(sym.isEmpty() || tok.isEmpty()) { connection.setText("● SET SYMBOL + PRIVATE TOKEN"); return; }
-        executor.execute(() -> {
+        ScheduledExecutorService ex = executor;
+        if (ex == null || ex.isShutdown()) { connection.setText("● APP NOT ACTIVE"); return; }
+        ex.execute(() -> {
             try {
                 URL u=new URL(API_BASE_URL+"/v1/mobile/command");
                 HttpURLConnection c=(HttpURLConnection)u.openConnection();
@@ -351,6 +381,7 @@ public class MainActivity extends Activity {
     }
 
     void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 30 && ActivityManager.isRunningInUserTestHarness()) return;
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
     }
@@ -391,5 +422,15 @@ public class MainActivity extends Activity {
 
     byte[] join(byte[] a,byte[] b){ byte[] out=new byte[a.length+b.length]; System.arraycopy(a,0,out,0,a.length); System.arraycopy(b,0,out,a.length,b.length); return out; }
 
-    @Override protected void onDestroy(){ if(executor!=null)executor.shutdownNow(); if(chartView!=null)chartView.destroy(); super.onDestroy(); }
+    @Override protected void onResume() {
+        super.onResume();
+        startPolling();
+    }
+
+    @Override protected void onPause() {
+        stopPolling();
+        super.onPause();
+    }
+
+    @Override protected void onDestroy(){ stopPolling(); if(chartView!=null)chartView.destroy(); super.onDestroy(); }
 }
