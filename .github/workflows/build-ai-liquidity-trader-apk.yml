@@ -69,4 +69,4 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: gradle connectedDebugAndroidTest
+          script: cd mobile && gradle connectedDebugAndroidTest
