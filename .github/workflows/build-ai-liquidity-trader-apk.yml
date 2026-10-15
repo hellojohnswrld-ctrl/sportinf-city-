@@ -70,3 +70,10 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: cd mobile && gradle connectedDebugAndroidTest
+      - name: Upload Android emulator test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-test-report
+          path: mobile/app/build/reports/androidTests/connected/debug/
+          if-no-files-found: warn
